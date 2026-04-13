@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme';
 import { useTheme } from '../lib/ThemeContext';
 import ScrollToTop from '../components/ScrollToTop';
+import { useFocus } from '../lib/FocusContext';
 
 const SCREEN_W = Dimensions.get('window').width;
 
@@ -391,6 +392,14 @@ function CategoryManagerModal({ visible, categories, onClose, onSave }) {
     setDrafts(drafts.filter((_, i) => i !== idx));
   }
 
+  function moveCat(idx, dir) {
+    const target = idx + dir;
+    if (target < 0 || target >= drafts.length) return;
+    const next = [...drafts];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setDrafts(next);
+  }
+
   return (
     <Modal visible={visible} animationType="slide">
       <SafeAreaView style={styles.modalScreen}>
@@ -407,6 +416,14 @@ function CategoryManagerModal({ visible, categories, onClose, onSave }) {
           <Text style={styles.hint}>You can use any emoji for the icon! (If you type an ionicons name, it will render the icon).</Text>
           {drafts.map((cat, idx) => (
             <View key={cat.key || idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <View style={{ gap: 2 }}>
+                <TouchableOpacity onPress={() => moveCat(idx, -1)} style={{ padding: 4, opacity: idx === 0 ? 0.3 : 1 }} disabled={idx === 0}>
+                  <Ionicons name="chevron-up" size={16} color="#6b7280" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => moveCat(idx, 1)} style={{ padding: 4, opacity: idx === drafts.length - 1 ? 0.3 : 1 }} disabled={idx === drafts.length - 1}>
+                  <Ionicons name="chevron-down" size={16} color="#6b7280" />
+                </TouchableOpacity>
+              </View>
               <TextInput 
                 style={[styles.fieldInput, { width: 50, textAlign: 'center' }]} 
                 value={cat.icon} 
@@ -438,53 +455,40 @@ function CategoryManagerModal({ visible, categories, onClose, onSave }) {
 // ═════════════════════════════════════════════════════════════════════════════
 
 export default function FocusScreen() {
-  const [entries, setEntries]       = useState([]);
-  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
-  const [loaded, setLoaded]         = useState(false);
-  const [timerRunning, setTimerRunning] = useState(false);
+  const { 
+    entries, addEntry, deleteEntry, updateEntry, 
+    categories, setCategories,
+    timerState, setTimerState,
+  } = useFocus();
+
   const [timerSeconds, setTimerSeconds] = useState(0);
-  const [timerCategory, setTimerCategory] = useState('work');
-  const [editEntry, setEditEntry]   = useState(null);
+  const [editEntry, setEditEntry]       = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCatModal, setShowCatModal] = useState(false);
-  const [statsPeriod, setStatsPeriod] = useState('today');
+  const [statsPeriod, setStatsPeriod]   = useState('today');
   const intervalRef = useRef(null);
   const scrollRef = useRef(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
+
+  // Sync display with shared timerState
+  useEffect(() => {
+    if (timerState.isRunning && timerState.startTime) {
+      const elapsedCloud = timerState.secondsAtStart;
+      const timeSinceStart = (Date.now() - new Date(timerState.startTime).getTime()) / 1000;
+      setTimerSeconds(Math.floor(elapsedCloud + timeSinceStart));
+    } else {
+      setTimerSeconds(timerState.secondsAtStart || 0);
+    }
+  }, [timerState.isRunning, timerState.startTime, timerState.secondsAtStart]);
 
   const handleScroll = (event) => {
     const y = event.nativeEvent.contentOffset.y;
     setShowScrollTop(y > 300);
   };
 
+  // Timer display ticker
   useEffect(() => {
-    Promise.all([
-      AsyncStorage.getItem('@ADHD_focus_entries'),
-      AsyncStorage.getItem('@ADHD_focus_cats')
-    ]).then(([storedEntries, storedCats]) => {
-      if (storedEntries) {
-        try { setEntries(JSON.parse(storedEntries).map(e => ({ ...e, date: new Date(e.date) }))); } catch(e) {}
-      } else {
-        setEntries(generateSampleEntries());
-      }
-      
-      if (storedCats) {
-        try { setCategories(JSON.parse(storedCats)); } catch(e) {}
-      }
-      setLoaded(true);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (loaded) {
-      AsyncStorage.setItem('@ADHD_focus_entries', JSON.stringify(entries)).catch(e => console.error(e));
-      AsyncStorage.setItem('@ADHD_focus_cats', JSON.stringify(categories)).catch(e => console.error(e));
-    }
-  }, [entries, categories, loaded]);
-
-  // Timer tick
-  useEffect(() => {
-    if (timerRunning) {
+    if (timerState.isRunning) {
       intervalRef.current = setInterval(() => {
         setTimerSeconds(s => s + 1);
       }, 1000);
@@ -492,55 +496,76 @@ export default function FocusScreen() {
       clearInterval(intervalRef.current);
     }
     return () => clearInterval(intervalRef.current);
-  }, [timerRunning]);
+  }, [timerState.isRunning]);
 
   function startTimer() {
-    setTimerRunning(true);
+    setTimerState(prev => ({ 
+      ...prev, 
+      isRunning: true, 
+      startTime: new Date().toISOString(),
+      secondsAtStart: timerSeconds 
+    }));
   }
 
   function pauseTimer() {
-    setTimerRunning(false);
+    setTimerState(prev => ({ 
+      ...prev, 
+      isRunning: false, 
+      startTime: null,
+      secondsAtStart: timerSeconds 
+    }));
   }
 
   function stopAndLog() {
-    setTimerRunning(false);
     const minutes = Math.max(1, Math.round(timerSeconds / 60));
-    if (timerSeconds < 10) {
-      setTimerSeconds(0);
-      return;
+    
+    // Create the entry if long enough
+    if (timerSeconds >= 10) {
+      const newEntry = {
+        id: String(Date.now()),
+        category: timerState.category,
+        minutes,
+        date: new Date(),
+        note: '',
+      };
+      addEntry(newEntry);
+      Alert.alert('Time Logged!', `${fmtDuration(minutes)} of ${categories.find(c => c.key === timerState.category)?.label || 'Focus'} logged.`);
     }
 
-    const newEntry = {
-      id: String(nextEntryId++),
-      category: timerCategory,
-      minutes,
-      date: new Date(),
-      note: '',
-    };
-    setEntries(prev => [newEntry, ...prev]);
+    // Reset shared state
+    setTimerState({ 
+      isRunning: false, 
+      category: timerState.category, 
+      secondsAtStart: 0, 
+      startTime: null 
+    });
     setTimerSeconds(0);
-    Alert.alert('Time Logged!', `${fmtDuration(minutes)} of ${categories.find(c => c.key === timerCategory)?.label || 'Focus'} logged.`);
   }
 
   function resetTimer() {
+    const act = () => {
+      setTimerState({ isRunning: false, category: timerState.category, secondsAtStart: 0, startTime: null });
+      setTimerSeconds(0);
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Discard current timer?')) act();
+      return;
+    }
     Alert.alert('Reset Timer', 'Discard current timer?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Reset', style: 'destructive', onPress: () => { setTimerRunning(false); setTimerSeconds(0); } },
+      { text: 'Reset', style: 'destructive', onPress: act },
     ]);
   }
 
   function saveEntry(entry) {
-    setEntries(prev => {
-      const exists = prev.find(e => e.id === entry.id);
-      if (exists) return prev.map(e => e.id === entry.id ? entry : e);
-      return [entry, ...prev];
-    });
+    updateEntry(entry);
     setEditEntry(null);
     setShowAddModal(false);
   }
 
-  function deleteEntry(id) {
-    setEntries(prev => prev.filter(e => e.id !== id));
+  function handleDeleteEntry(id) {
+    deleteEntry(id);
     setEditEntry(null);
   }
 
@@ -587,8 +612,6 @@ export default function FocusScreen() {
     .sort((a, b) => b.date - a.date)
     .slice(0, 20);
 
-  const currentCat = categories.find(c => c.key === timerCategory) || categories[0];
-
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView 
@@ -607,74 +630,49 @@ export default function FocusScreen() {
         </View>
 
         <View style={styles.timerSection}>
-          {/* Category selector for timer */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll} contentContainerStyle={styles.catScrollContent}>
-            {categories.map(cat => (
-              <TouchableOpacity
-                key={cat.key}
-                style={[styles.timerCatChip, timerCategory === cat.key && { backgroundColor: cat.color || '#6366f1', borderColor: cat.color || '#6366f1' }]}
-                onPress={() => !timerRunning && setTimerCategory(cat.key)}
-              >
-                {cat.icon.indexOf('-') > -1 ? (
-                  <Ionicons name={cat.icon} size={13} color={timerCategory === cat.key ? '#fff' : (cat.color || '#6b7280')} />
-                ) : (
-                  <Text style={{ fontSize: 11 }}>{cat.icon}</Text>
-                )}
-                <Text style={[styles.timerCatText, timerCategory === cat.key && { color: '#fff' }]}>{cat.label}</Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity style={[styles.timerCatChip, { paddingHorizontal: 10 }]} onPress={() => setShowCatModal(true)}>
-              <Ionicons name="settings-outline" size={14} color="#6b7280" />
-            </TouchableOpacity>
-          </ScrollView>
+              <View style={[styles.timerCircle, { borderColor: (categories.find(c => c.key === timerState.category) || categories[0])?.color || colors.primary }]}>
+                <Text style={[styles.timerText, { color: colors.textPrimary }]}>{fmtTimer(timerSeconds)}</Text>
+                <Text style={styles.timerSubText}>
+                  {(categories.find(c => c.key === timerState.category) || categories[0])?.label || 'Focusing'}
+                </Text>
+              </View>
 
-          {/* Timer display */}
-          <View style={[styles.timerDisplay, { borderColor: currentCat?.color || colors.primary }]}>
-            <Text style={[styles.timerText, { color: currentCat?.color || colors.primary }]}>
-              {fmtTimer(timerSeconds)}
-            </Text>
-            {timerRunning && (
-              <View style={[styles.timerPulse, { backgroundColor: currentCat?.color || colors.primary }]} />
-            )}
-          </View>
+              <View style={styles.timerControls}>
+                <TouchableOpacity style={styles.controlBtn} onPress={resetTimer}>
+                  <Ionicons name="refresh-outline" size={24} color={colors.textSecondary} />
+                </TouchableOpacity>
 
-          {/* Timer controls */}
-          <View style={styles.timerControls}>
-            {!timerRunning && timerSeconds === 0 && (
-              <TouchableOpacity style={[styles.timerBtn, styles.timerStart, { backgroundColor: currentCat?.color || colors.primary }]} onPress={startTimer}>
-                <Ionicons name="play" size={22} color="#fff" />
-                <Text style={styles.timerBtnText}>Start</Text>
-              </TouchableOpacity>
-            )}
-            {timerRunning && (
-              <>
-                <TouchableOpacity style={[styles.timerBtn, styles.timerPause]} onPress={pauseTimer}>
-                  <Ionicons name="pause" size={20} color={colors.amber} />
-                  <Text style={[styles.timerBtnTextSm, { color: colors.amber }]}>Pause</Text>
+                <TouchableOpacity 
+                  style={[styles.mainControl, { backgroundColor: (categories.find(c => c.key === timerState.category) || categories[0])?.color || colors.primary }]} 
+                  onPress={timerState.isRunning ? pauseTimer : startTimer}
+                >
+                  <Ionicons name={timerState.isRunning ? "pause" : "play"} size={32} color="#fff" />
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.timerBtn, styles.timerStop]} onPress={stopAndLog}>
-                  <Ionicons name="stop" size={20} color="#ef4444" />
-                  <Text style={[styles.timerBtnTextSm, { color: '#ef4444' }]}>Log</Text>
+
+                <TouchableOpacity style={styles.controlBtn} onPress={stopAndLog}>
+                  <Ionicons name="stop-outline" size={24} color={colors.textSecondary} />
                 </TouchableOpacity>
-              </>
-            )}
-            {!timerRunning && timerSeconds > 0 && (
-              <>
-                <TouchableOpacity style={[styles.timerBtn, styles.timerStart, { backgroundColor: currentCat?.color || colors.primary }]} onPress={startTimer}>
-                  <Ionicons name="play" size={20} color="#fff" />
-                  <Text style={styles.timerBtnText}>Resume</Text>
+              </View>
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catPicker}>
+                {categories.map(cat => (
+                  <TouchableOpacity 
+                    key={cat.key} 
+                    style={[styles.catChip, timerState.category === cat.key && { backgroundColor: cat.color + '20', borderColor: cat.color }]}
+                    onPress={() => setTimerState(prev => ({ ...prev, category: cat.key }))}
+                  >
+                    {cat.icon && cat.icon.includes('-') ? (
+                      <Ionicons name={cat.icon} size={14} color={timerState.category === cat.key ? cat.color : "#6b7280"} />
+                    ) : (
+                      <Text style={{ fontSize: 13 }}>{cat.icon}</Text>
+                    )}
+                    <Text style={[styles.catChipText, timerState.category === cat.key && { color: cat.color, fontWeight: '700' }]}>{cat.label}</Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity style={[styles.catChip, { paddingHorizontal: 10 }]} onPress={() => setShowCatModal(true)}>
+                  <Ionicons name="settings-outline" size={14} color="#6b7280" />
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.timerBtn, styles.timerStop]} onPress={stopAndLog}>
-                  <Ionicons name="checkmark" size={20} color={colors.green} />
-                  <Text style={[styles.timerBtnTextSm, { color: colors.green }]}>Log</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.timerBtn, styles.timerPause]} onPress={resetTimer}>
-                  <Ionicons name="refresh" size={18} color={colors.textMuted} />
-                  <Text style={[styles.timerBtnTextSm, { color: colors.textMuted }]}>Reset</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
+              </ScrollView>
         </View>
 
         {/* ── Add manual entry button ── */}
@@ -761,6 +759,13 @@ export default function FocusScreen() {
                     </Text>
                   </View>
                   <Text style={[styles.entryDuration, { color: cat.color }]}>{fmtDuration(entry.minutes)}</Text>
+                  <TouchableOpacity 
+                onPress={(e) => { e.stopPropagation(); handleDeleteEntry(entry.id); }} 
+                style={{ padding: 6, marginLeft: 4 }}
+                hitSlop={8}
+              >    
+                    <Ionicons name="trash-outline" size={16} color="#d1d5db" />
+                  </TouchableOpacity>
                   <Ionicons name="chevron-forward" size={14} color="#d1d5db" />
                 </TouchableOpacity>
               );
@@ -859,9 +864,9 @@ const styles = StyleSheet.create({
   },
   timerDisplay: {
     alignSelf: 'center',
-    width: SCREEN_W * 0.55,
-    height: SCREEN_W * 0.55,
-    borderRadius: SCREEN_W * 0.275,
+    width: Platform.OS === 'web' ? Math.min(SCREEN_W * 0.55, 220) : SCREEN_W * 0.55,
+    height: Platform.OS === 'web' ? Math.min(SCREEN_W * 0.55, 220) : SCREEN_W * 0.55,
+    borderRadius: Platform.OS === 'web' ? Math.min(SCREEN_W * 0.275, 110) : SCREEN_W * 0.275,
     borderWidth: 4,
     alignItems: 'center',
     justifyContent: 'center',

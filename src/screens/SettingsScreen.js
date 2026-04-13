@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEconomy } from '../lib/EconomyContext';
 import { useTasks } from '../lib/TasksContext';
 import { useTheme } from '../lib/ThemeContext';
-import { useProfile, PROFILES } from '../lib/ProfileContext';
+import { useProfile } from '../lib/ProfileContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ScrollToTop from '../components/ScrollToTop';
 
@@ -26,37 +26,29 @@ export default function SettingsScreen() {
   };
 
   const handleResetEconomy = () => {
+    console.log("Reset button clicked");
     if (Platform.OS === 'web') {
-      if (window.confirm("Are you sure you want to reset your Level, XP, and Points back to 0?")) {
-        resetEconomy();
-      }
+      const ok = window.confirm("Reset all RPG stats to zero?");
+      if (ok) resetEconomy();
       return;
     }
-    Alert.alert(
-      "Reset RPG Stats",
-      "Are you sure you want to reset your Level, XP, and Points back to 0? This cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Reset Everything", style: "destructive", onPress: () => resetEconomy() }
-      ]
-    );
+    Alert.alert("Reset Stats", "Reset everything?", [
+      { text: "Cancel" },
+      { text: "Reset", onPress: () => resetEconomy() }
+    ]);
   };
 
   const handleNukeTasks = () => {
+    console.log("Nuke button clicked");
     if (Platform.OS === 'web') {
-      if (window.confirm("Are you sure you want to wipe all pending, active, and completed tasks permanently?")) {
-        setTasks([]);
-      }
+      const ok = window.confirm("Delete all tasks permanently?");
+      if (ok) setTasks([]);
       return;
     }
-    Alert.alert(
-      "Clear All Tasks",
-      "Are you sure you want to wipe all pending, active, and completed tasks permanently?",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Nuke Board", style: "destructive", onPress: () => setTasks([]) }
-      ]
-    );
+    Alert.alert("Nuke Board", "Delete all tasks?", [
+      { text: "Cancel" },
+      { text: "Delete", onPress: () => setTasks([]) }
+    ]);
   };
 
   const handleDemoData = () => {
@@ -308,6 +300,11 @@ export default function SettingsScreen() {
           </View>
           
           <TouchableOpacity style={[styles.cardRow, styles.cardRowLast]} onPress={() => {
+            if (Platform.OS === 'web') {
+              const ok = window.confirm("Sign out? Your progress stays synced in the cloud.");
+              if (ok) logout();
+              return;
+            }
             Alert.alert(
               "Sign Out",
               "Are you sure you want to sign out? Your progress will stay synced in the cloud.",

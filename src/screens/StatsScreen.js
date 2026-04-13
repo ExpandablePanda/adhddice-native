@@ -9,6 +9,7 @@ import { useTasks } from '../lib/TasksContext';
 import { useEconomy } from '../lib/EconomyContext';
 import { useTheme } from '../lib/ThemeContext';
 import ScrollToTop from '../components/ScrollToTop';
+import { useFocus } from '../lib/FocusContext';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -68,6 +69,8 @@ export default function StatsScreen() {
   const { taskHistory } = useTasks();
   const { economy } = useEconomy();
   
+  const { entries: focusEntries } = useFocus();
+  
   const scrollRef = useRef(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
@@ -76,21 +79,9 @@ export default function StatsScreen() {
     setShowScrollTop(y > 300);
   };
   
-  const [focusEntries, setFocusEntries] = useState([]);
-  const [loaded, setLoaded] = useState(false);
   const [period, setPeriod] = useState('week'); // 'week' | 'month'
 
-  useEffect(() => {
-    AsyncStorage.getItem('@ADHD_focus_entries').then(stored => {
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored).map(e => ({ ...e, date: new Date(e.date) }));
-          setFocusEntries(parsed);
-        } catch(e) {}
-      }
-      setLoaded(true);
-    });
-  }, []);
+  const loaded = true; // Data comes from context providers which handle loading state
 
   // ── Aggregations ────────────────────────────────────────────────────────────
 

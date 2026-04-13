@@ -14,10 +14,10 @@ import { ThemeProvider, useTheme } from './src/lib/ThemeContext';
 import { TasksProvider } from './src/lib/TasksContext';
 import { EconomyProvider, useEconomy } from './src/lib/EconomyContext';
 import { NotesProvider } from './src/lib/NotesContext';
+import { FocusProvider } from './src/lib/FocusContext';
 import { View, Text, StyleSheet, Image } from 'react-native';
 
 import { ProfileProvider, useProfile } from './src/lib/ProfileContext';
-import LandingScreen from './src/screens/LandingScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -109,7 +109,9 @@ function RootApp() {
       <EconomyProvider>
         <TasksProvider>
           <NotesProvider>
-            <MainApp />
+            <FocusProvider>
+              <MainApp />
+            </FocusProvider>
           </NotesProvider>
         </TasksProvider>
       </EconomyProvider>

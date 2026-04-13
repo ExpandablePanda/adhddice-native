@@ -1,22 +1,8 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useProfile } from './ProfileContext';
 import { supabase } from './supabase';
-
-// Sample data for initial setup
-const INITIAL_TASKS = [
-  {
-    id: '1', title: 'Morning workout', status: 'active',
-    energy: 'high', dueDate: '04/13/2026', nextDueDate: '',
-    tags: ['health'],
-    subtasks: [
-      { id: 's1', title: 'Stretch 5 min', done: false, subtasks: [] },
-      { id: 's2', title: 'Run 2 miles', done: true, subtasks: [
-        { id: 's2a', title: 'Warm up walk', done: true, subtasks: [] },
-      ]},
-    ],
-  },
-];
 
 const TasksContext = createContext();
 
@@ -26,31 +12,67 @@ export function TasksProvider({ children }) {
   const [taskHistory, setTaskHistory] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  
+  // Track the timestamp of the last local change and the last saved state hash
+  const lastLocalChangeRef = useRef(0);
+  const isRemoteUpdateRef  = useRef(false);
+  const broadcastRef       = useRef(null);
 
-  // 1. Initial Load (Local + Cloud)
+  // Initialize BroadcastChannel for web multi-tab sync
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof BroadcastChannel !== 'undefined') {
+      const channelName = `tasks_sync_${user?.id || 'anon'}`;
+      broadcastRef.current = new BroadcastChannel(channelName);
+      
+      broadcastRef.current.onmessage = (event) => {
+        if (event.data?.type === 'TASKS_UPDATE' && event.data.storagePrefix === storagePrefix) {
+          isRemoteUpdateRef.current = true;
+          setTasks(event.data.tasks);
+          setTaskHistory(event.data.history);
+        }
+      };
+    }
+    return () => {
+      if (broadcastRef.current) broadcastRef.current.close();
+    };
+  }, [user?.id, storagePrefix]);
+
+  // 1. Initial Load (Local + Cloud merge)
   useEffect(() => {
     async function loadData() {
-      // Local first
+      setLoaded(false);
+      
+      // A. Load from Local Storage immediately
       const storedTasks = await AsyncStorage.getItem(`${storagePrefix}tasks`);
       const storedHistory = await AsyncStorage.getItem(`${storagePrefix}task_history`);
       
-      if (storedTasks) setTasks(JSON.parse(storedTasks));
-      if (storedHistory) setTaskHistory(JSON.parse(storedHistory));
+      let initialTasks = [];
+      let initialHistory = [];
+      
+      if (storedTasks) initialTasks = JSON.parse(storedTasks);
+      if (storedHistory) initialHistory = JSON.parse(storedHistory);
+      
+      // Set local state quickly for better UX
+      setTasks(initialTasks);
+      setTaskHistory(initialHistory);
 
-      // Cloud sync
+      // B. Cloud sync (Cloud is the source of truth on startup)
       if (user) {
         try {
-          const { data } = await supabase
+          const { data, error } = await supabase
             .from('user_tasks')
-            .select('data')
+            .select('data, updated_at')
             .eq('user_id', user.id)
             .single();
 
-          if (data && data.data) {
+          if (data?.data) {
+            // Only update if cloud has content
+            isRemoteUpdateRef.current = true;
             setTasks(data.data);
+            // We assume history is local-only or we could sync it too if needed
           }
         } catch (e) {
-          console.log('Tasks cloud sync fetch failed', e);
+          console.log('Tasks initial cloud sync skipped or failed', e);
         }
       }
       
@@ -65,67 +87,67 @@ export function TasksProvider({ children }) {
 
     const channel = supabase
       .channel(`rt:user_tasks:${user.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'user_tasks',
-          filter: `user_id=eq.${user.id}`,
-        },
-        (payload) => {
-          if (payload.new && payload.new.data) {
-            // Check if the new data is actually different from our current state
-            // to avoid unnecessary re-renders or "bounce-back" saves
-            const cloudDataStr = JSON.stringify(payload.new.data);
-            AsyncStorage.getItem(`${storagePrefix}tasks`).then(localDataStr => {
-              if (cloudDataStr !== localDataStr) {
-                setTasks(payload.new.data);
-              }
-            });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_tasks', filter: `user_id=eq.${user.id}` }, 
+      (payload) => {
+        if (payload.new?.data) {
+          const remoteTime = new Date(payload.new.updated_at).getTime();
+          
+          // Only apply if the remote change is newer than our last LOCAL change
+          // We allow a small 1s buffer for clock skew
+          if (remoteTime > lastLocalChangeRef.current + 1000) {
+            isRemoteUpdateRef.current = true;
+            setTasks(payload.new.data);
           }
         }
-      )
+      })
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user, storagePrefix]);
+    return () => { supabase.removeChannel(channel); };
+  }, [user]);
 
-  // 2. Save Data (Local + Cloud)
+  // 2. Save Data (Debounced)
   useEffect(() => {
     if (!loaded || !user) return;
 
+    // If this update came from the cloud or broadcast, don't trigger a re-save
+    if (isRemoteUpdateRef.current) {
+      isRemoteUpdateRef.current = false;
+      return;
+    }
+
+    // Mark that we have changed something locally
+    lastLocalChangeRef.current = Date.now();
+
+    // Broadcast to other tabs immediately
+    if (broadcastRef.current) {
+      broadcastRef.current.postMessage({
+        type: 'TASKS_UPDATE',
+        tasks,
+        history: taskHistory,
+        storagePrefix
+      });
+    }
+
     const saveData = async () => {
-      const tasksStr = JSON.stringify(tasks);
-      const historyStr = JSON.stringify(taskHistory);
-
+      const dataToSave = tasks;
+      const historyToSave = taskHistory;
+      
       // Save local
-      await AsyncStorage.setItem(`${storagePrefix}tasks`, tasksStr);
-      await AsyncStorage.setItem(`${storagePrefix}task_history`, historyStr);
+      await AsyncStorage.setItem(`${storagePrefix}tasks`, JSON.stringify(dataToSave));
+      await AsyncStorage.setItem(`${storagePrefix}task_history`, JSON.stringify(historyToSave));
 
-      // Check if we actually need to update the cloud 
-      // (prevents loops if the change came from the cloud)
+      // Push to cloud
+      setIsSyncing(true);
       try {
-        const { data: remote } = await supabase
-          .from('user_tasks')
-          .select('data')
-          .eq('user_id', user.id)
-          .single();
-        
-        if (remote && JSON.stringify(remote.data) === tasksStr) {
-          return; // Already in sync
-        }
-
-        setIsSyncing(true);
-        await supabase
+        const { error } = await supabase
           .from('user_tasks')
           .upsert({ 
             user_id: user.id, 
-            data: tasks,
+            data: dataToSave,
             updated_at: new Date().toISOString()
           }, { onConflict: 'user_id' });
+        
+        if (error) throw error;
       } catch (e) {
         console.error('Tasks cloud save failed', e);
       } finally {
@@ -133,8 +155,16 @@ export function TasksProvider({ children }) {
       }
     };
 
-    const timeoutId = setTimeout(saveData, 1000); // Reduced to 1s for snappier feel
-    return () => clearTimeout(timeoutId);
+    const timeoutId = setTimeout(saveData, 1500); // 1.5s debounce for multi-device stability
+    
+    // Add a backup "Save on Exit" for web
+    const handleUnload = () => saveData();
+    if (Platform.OS === 'web') window.addEventListener('beforeunload', handleUnload);
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (Platform.OS === 'web') window.removeEventListener('beforeunload', handleUnload);
+    };
   }, [tasks, taskHistory, loaded, user, storagePrefix]);
 
   const logTaskEvent = (task, status) => {
@@ -147,13 +177,13 @@ export function TasksProvider({ children }) {
       tags: task.tags || [],
       timestamp: new Date().toISOString()
     };
-    setTaskHistory(prev => [event, ...prev].slice(0, 1000)); // Keep last 1000 events
+    setTaskHistory(prev => [event, ...prev].slice(0, 1000));
   };
 
   if (!loaded) return null;
 
   return (
-    <TasksContext.Provider value={{ tasks, setTasks, taskHistory, logTaskEvent }}>
+    <TasksContext.Provider value={{ tasks, setTasks, taskHistory, logTaskEvent, isSyncing }}>
       {children}
     </TasksContext.Provider>
   );
@@ -164,3 +194,4 @@ export function useTasks() {
   if (!context) throw new Error('useTasks must be used within TasksProvider');
   return context;
 }
+

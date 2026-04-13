@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { colors } from '../theme';
 
 const ITEM_HEIGHT = 46;
 
+// Native scroll-wheel picker (iOS/Android only)
 function Wheel({ data, selectedValue, onValueChange }) {
   const scrollViewRef = useRef(null);
   
@@ -43,6 +44,36 @@ function Wheel({ data, selectedValue, onValueChange }) {
           </View>
         ))}
       </ScrollView>
+    </View>
+  );
+}
+
+// Web-friendly stepper picker (▲/▼ buttons)
+function WebStepper({ data, selectedValue, onValueChange, label }) {
+  const currentIdx = data.indexOf(selectedValue);
+
+  function stepUp() {
+    const next = (currentIdx + 1) % data.length;
+    onValueChange(data[next]);
+  }
+
+  function stepDown() {
+    const prev = (currentIdx - 1 + data.length) % data.length;
+    onValueChange(data[prev]);
+  }
+
+  return (
+    <View style={webStyles.stepper}>
+      <TouchableOpacity onPress={stepUp} style={webStyles.stepBtn}>
+        <Text style={webStyles.stepArrow}>▲</Text>
+      </TouchableOpacity>
+      <View style={webStyles.stepValueBox}>
+        <Text style={webStyles.stepValue}>{selectedValue}</Text>
+      </View>
+      <TouchableOpacity onPress={stepDown} style={webStyles.stepBtn}>
+        <Text style={webStyles.stepArrow}>▼</Text>
+      </TouchableOpacity>
+      {label && <Text style={webStyles.stepLabel}>{label}</Text>}
     </View>
   );
 }
@@ -87,19 +118,31 @@ export default function TimePickerModal({ visible, onClose, onSelect, initialTim
     onClose();
   }
 
+  const isWeb = Platform.OS === 'web';
+
   return (
     <Modal visible={visible} transparent animationType="slide">
       <View style={styles.overlay}>
-        <View style={styles.modalCard}>
+        <View style={[styles.modalCard, isWeb && { maxWidth: 400, alignSelf: 'center', width: '100%' }]}>
           <Text style={styles.title}>Select Time</Text>
           
-          <View style={styles.pickerRow}>
-            <Wheel data={hours} selectedValue={h} onValueChange={setH} />
-            <Text style={styles.colon}>:</Text>
-            <Wheel data={minutes} selectedValue={m} onValueChange={setM} />
-            <View style={{ width: 10 }} />
-            <Wheel data={periods} selectedValue={p} onValueChange={setP} />
-          </View>
+          {isWeb ? (
+            <View style={webStyles.stepperRow}>
+              <WebStepper data={hours} selectedValue={h} onValueChange={setH} label="Hour" />
+              <Text style={styles.colon}>:</Text>
+              <WebStepper data={minutes} selectedValue={m} onValueChange={setM} label="Min" />
+              <View style={{ width: 16 }} />
+              <WebStepper data={periods} selectedValue={p} onValueChange={setP} label="" />
+            </View>
+          ) : (
+            <View style={styles.pickerRow}>
+              <Wheel data={hours} selectedValue={h} onValueChange={setH} />
+              <Text style={styles.colon}>:</Text>
+              <Wheel data={minutes} selectedValue={m} onValueChange={setM} />
+              <View style={{ width: 10 }} />
+              <Wheel data={periods} selectedValue={p} onValueChange={setP} />
+            </View>
+          )}
 
           <View style={styles.btnRow}>
             <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
@@ -114,6 +157,56 @@ export default function TimePickerModal({ visible, onClose, onSelect, initialTim
     </Modal>
   );
 }
+
+const webStyles = StyleSheet.create({
+  stepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+    gap: 8,
+  },
+  stepper: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  stepBtn: {
+    width: 48,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  stepArrow: {
+    fontSize: 16,
+    color: '#6b7280',
+    fontWeight: '700',
+  },
+  stepValueBox: {
+    width: 56,
+    height: 48,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  stepLabel: {
+    fontSize: 11,
+    color: '#9ca3af',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+});
 
 const styles = StyleSheet.create({
   overlay: {

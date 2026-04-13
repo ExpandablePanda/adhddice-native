@@ -171,6 +171,11 @@ function PrizeManagerModal({ visible, pools, onSave, onClose }) {
   }
 
   function clearTab() {
+    if (Platform.OS === 'web') {
+      const ok = window.confirm(`Clear ${activeTab} Prizes? Remove all prizes in this list?`);
+      if (ok) setDraft(d => ({ ...d, [activeTab]: [] }));
+      return;
+    }
     Alert.alert(`Clear ${activeTab} Prizes`, 'Remove all prizes in this list?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Clear', style: 'destructive', onPress: () => setDraft(d => ({ ...d, [activeTab]: [] })) },
@@ -178,6 +183,11 @@ function PrizeManagerModal({ visible, pools, onSave, onClose }) {
   }
 
   function resetDefaults() {
+    if (Platform.OS === 'web') {
+      const ok = window.confirm('Reset to Defaults? Replace all global pools with defaults?');
+      if (ok) setDraft(JSON.parse(JSON.stringify(DEFAULT_POOLS)));
+      return;
+    }
     Alert.alert('Reset to Defaults', 'Replace all global pools with defaults?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Reset', onPress: () => setDraft(JSON.parse(JSON.stringify(DEFAULT_POOLS))) },
@@ -639,7 +649,7 @@ export default function DiceScreen() {
     <SafeAreaView style={styles.screen}>
       <ScrollView 
         ref={scrollRef}
-        contentContainerStyle={styles.scrollContent} 
+        contentContainerStyle={[styles.scrollContent, Platform.OS === 'web' && { maxWidth: 600, alignSelf: 'center', width: '100%' }]} 
         showsVerticalScrollIndicator={false}
         onScroll={handleScroll}
         scrollEventThrottle={16}
@@ -686,7 +696,7 @@ export default function DiceScreen() {
               activeOpacity={0.8}
               disabled={rolling}
             >
-              <D20Shape size={SCREEN_W * 0.48} color={colors.primary} glowColor={colors.primary} />
+              <D20Shape size={Platform.OS === 'web' ? Math.min(SCREEN_W * 0.48, 180) : SCREEN_W * 0.48} color={colors.primary} glowColor={colors.primary} />
               {/* Number on the face */}
               <View style={styles.diceNumberWrap}>
                 <Text style={styles.diceNumber}>

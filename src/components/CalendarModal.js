@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, SafeAreaView, Platform } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, SafeAreaView, Platform, Dimensions } from 'react-native';
+
+const SCREEN_W = Dimensions.get('window').width;
+const isWeb = Platform.OS === 'web';
+const CALENDAR_MAX = isWeb ? Math.min(SCREEN_W * 0.9, 400) : undefined;
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme';
 
@@ -85,6 +89,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     width: '100%',
+    maxWidth: CALENDAR_MAX || '100%',
     shadowColor: '#000',
     shadowOpacity: 0.15,
     shadowRadius: 15,
@@ -122,7 +127,7 @@ const styles = StyleSheet.create({
   },
   dayCell: {
     width: '14.28%',
-    aspectRatio: 1,
+    height: isWeb ? 40 : 44,
     justifyContent: 'center',
     alignItems: 'center',
   },

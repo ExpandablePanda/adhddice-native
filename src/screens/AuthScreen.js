@@ -49,13 +49,14 @@ export default function AuthScreen() {
               source={require('../../assets/logo.png')}
               style={styles.logo}
             />
-            <Text style={styles.tagline}>Sync your focus across devices</Text>
+            <Text style={styles.welcomeTitle}>ADHD'DICE</Text>
+            <Text style={styles.tagline}>Sync your focus, conquer your day</Text>
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.title}>{isLogin ? 'Welcome Back' : 'Create Account'}</Text>
+            <Text style={styles.title}>{isLogin ? 'Welcome Back!' : 'Join the Quest'}</Text>
             <Text style={styles.subtitle}>
-              {isLogin ? 'Sign in to access your tasks' : 'Start your gamified productivity journey'}
+              {isLogin ? 'Sign in to access your cloud-synced board' : 'Start your gamified productivity journey today'}
             </Text>
 
             <View style={styles.inputGroup}>
@@ -138,6 +139,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6b7280',
     fontWeight: '500',
+  },
+  welcomeTitle: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#111827',
+    marginBottom: 4,
+    letterSpacing: 1,
   },
   card: {
     backgroundColor: '#fff',

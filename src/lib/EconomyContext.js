@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useProfile } from './ProfileContext';
 import { supabase } from './supabase';
@@ -19,30 +20,49 @@ export function EconomyProvider({ children }) {
   const { storagePrefix, user } = useProfile();
   const [economy, setEconomy] = useState(INITIAL_ECONOMY);
   const [loaded, setLoaded] = useState(false);
+  
+  const lastLocalChangeRef = useRef(0);
+  const isRemoteUpdateRef  = useRef(false);
+  const broadcastRef       = useRef(null);
 
-  // 1. Initial Load (Local + Cloud)
+  // BroadcastChannel for web
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof BroadcastChannel !== 'undefined') {
+      const channelName = `economy_sync_${user?.id || 'anon'}`;
+      broadcastRef.current = new BroadcastChannel(channelName);
+      broadcastRef.current.onmessage = (event) => {
+        if (event.data?.type === 'ECONOMY_UPDATE' && event.data.storagePrefix === storagePrefix) {
+          isRemoteUpdateRef.current = true;
+          setEconomy(event.data.economy);
+        }
+      };
+    }
+    return () => { if (broadcastRef.current) broadcastRef.current.close(); };
+  }, [user?.id, storagePrefix]);
+
+  // 1. Initial Load
   useEffect(() => {
     async function loadData() {
-      // Local first
+      setLoaded(false);
       const stored = await AsyncStorage.getItem(`${storagePrefix}economy`);
       if (stored) {
         try { setEconomy(JSON.parse(stored)); } catch (e) {}
       }
 
-      // Cloud sync
       if (user) {
         try {
           const { data } = await supabase
             .from('user_economy')
-            .select('data')
+            .select('data, updated_at')
             .eq('user_id', user.id)
             .single();
 
-          if (data && data.data) {
+          if (data?.data) {
+            isRemoteUpdateRef.current = true;
             setEconomy(data.data);
           }
         } catch (e) {
-          console.log('Economy cloud fetch failed', e);
+          console.log('Economy sync skipped', e);
         }
       }
       setLoaded(true);
@@ -50,53 +70,62 @@ export function EconomyProvider({ children }) {
     loadData();
   }, [storagePrefix, user]);
 
-  // 1b. Real-time Subscription
+  // 1b. Real-time
   useEffect(() => {
     if (!user) return;
-
     const channel = supabase
       .channel(`rt:user_economy:${user.id}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'user_economy', filter: `user_id=eq.${user.id}` },
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_economy', filter: `user_id=eq.${user.id}` },
         (payload) => {
-          if (payload.new && payload.new.data) {
-            const cloudStr = JSON.stringify(payload.new.data);
-            AsyncStorage.getItem(`${storagePrefix}economy`).then(localStr => {
-              if (cloudStr !== localStr) setEconomy(payload.new.data);
-            });
+          if (payload.new?.data) {
+            const remoteTime = new Date(payload.new.updated_at).getTime();
+            if (remoteTime > lastLocalChangeRef.current + 1000) {
+              isRemoteUpdateRef.current = true;
+              setEconomy(payload.new.data);
+            }
           }
         }
       )
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
-  }, [user, storagePrefix]);
+  }, [user]);
 
-  // 2. Save Data (Local + Cloud)
+  // 2. Save
   useEffect(() => {
     if (!loaded || !user) return;
+    if (isRemoteUpdateRef.current) {
+      isRemoteUpdateRef.current = false;
+      return;
+    }
+
+    lastLocalChangeRef.current = Date.now();
+
+    if (broadcastRef.current) {
+      broadcastRef.current.postMessage({ type: 'ECONOMY_UPDATE', economy, storagePrefix });
+    }
 
     const saveData = async () => {
-      const econStr = JSON.stringify(economy);
-      // Save local
-      await AsyncStorage.setItem(`${storagePrefix}economy`, econStr);
+      const dataToSave = economy;
+      await AsyncStorage.setItem(`${storagePrefix}economy`, JSON.stringify(dataToSave));
 
-      // Save to Cloud
       try {
-        const { data: remote } = await supabase.from('user_economy').select('data').eq('user_id', user.id).single();
-        if (remote && JSON.stringify(remote.data) === econStr) return;
-
-        await supabase
+        const { error } = await supabase
           .from('user_economy')
-          .upsert({ user_id: user.id, data: economy, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+          .upsert({ user_id: user.id, data: dataToSave, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+        if (error) throw error;
       } catch (e) {
         console.error('Economy cloud save failed', e);
       }
     };
 
-    const timeoutId = setTimeout(saveData, 1000);
-    return () => clearTimeout(timeoutId);
+    const timeoutId = setTimeout(saveData, 1500);
+    const handleUnload = () => saveData();
+    if (Platform.OS === 'web') window.addEventListener('beforeunload', handleUnload);
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (Platform.OS === 'web') window.removeEventListener('beforeunload', handleUnload);
+    };
   }, [economy, loaded, user, storagePrefix]);
 
   const addReward = (gainedPoints, gainedXp) => {
@@ -110,7 +139,7 @@ export function EconomyProvider({ children }) {
         newXp -= newReq;
         newLevel++;
         newRolls++;
-        newReq = Math.floor(newReq * 1.5); // Next level requires 50% more XP
+        newReq = Math.floor(newReq * 1.5);
       }
 
       return {
@@ -132,8 +161,6 @@ export function EconomyProvider({ children }) {
       let newReq = prev.xpReq;
       let newRolls = prev.freeRolls;
       
-      // Basic de-leveling. It's complex to know the exact previous requirements if multiple levels are lost,
-      // but assuming they only lost 1-2 levels, we can reverse the 1.5x math roughly:
       while (newXp < 0 && newLevel > 1) {
         newLevel--;
         newRolls = Math.max(0, newRolls - 1);
@@ -144,14 +171,7 @@ export function EconomyProvider({ children }) {
       if (newXp < 0) newXp = 0;
       if (newPoints < 0) newPoints = 0;
 
-      return {
-        ...prev,
-        points: newPoints,
-        xp: newXp,
-        level: newLevel,
-        xpReq: newReq,
-        freeRolls: newRolls,
-      };
+      return { ...prev, points: newPoints, xp: newXp, level: newLevel, xpReq: newReq, freeRolls: newRolls };
     });
   };
 
@@ -167,16 +187,10 @@ export function EconomyProvider({ children }) {
     return false;
   };
 
-  const resetEconomy = () => {
-    setEconomy(INITIAL_ECONOMY);
-  };
+  const resetEconomy = () => setEconomy(INITIAL_ECONOMY);
 
   const cheatEconomy = () => {
-    setEconomy(prev => ({
-      ...prev,
-      points: prev.points + 1000,
-      freeRolls: prev.freeRolls + 10,
-    }));
+    setEconomy(prev => ({ ...prev, points: prev.points + 1000, freeRolls: prev.freeRolls + 10 }));
   };
 
   const incrementActiveStreak = () => {
@@ -187,6 +201,10 @@ export function EconomyProvider({ children }) {
     setEconomy(prev => ({ ...prev, missedStreak: (prev.missedStreak || 0) + 1, activeStreak: 0 }));
   };
 
+  const addXP = (amount) => {
+    setEconomy(prev => ({ ...prev, xp: prev.xp + amount }));
+  };
+
   const addFreeRoll = (amount = 1) => {
     setEconomy(prev => ({ ...prev, freeRolls: prev.freeRolls + amount }));
   };
@@ -194,7 +212,7 @@ export function EconomyProvider({ children }) {
   if (!loaded) return null;
 
   return (
-    <EconomyContext.Provider value={{ economy, addReward, spendPoints, removeReward, resetEconomy, cheatEconomy, incrementActiveStreak, incrementMissedStreak, addFreeRoll }}>
+    <EconomyContext.Provider value={{ economy, addReward, spendPoints, removeReward, resetEconomy, cheatEconomy, incrementActiveStreak, incrementMissedStreak, addXP, addFreeRoll }}>
       {children}
     </EconomyContext.Provider>
   );
@@ -205,3 +223,4 @@ export function useEconomy() {
   if (!context) throw new Error('useEconomy must be used within EconomyProvider');
   return context;
 }
+

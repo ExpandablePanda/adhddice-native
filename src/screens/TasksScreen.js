@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
+// ADHD'DICE: Cloud-Sync & Real-time Enabled 🚀
 import {
   View, Text, SectionList, FlatList, TouchableOpacity, TextInput,
   StyleSheet, Modal, KeyboardAvoidingView, Platform,
-  SafeAreaView, ScrollView, Alert, Animated,
+  SafeAreaView, ScrollView, Alert, Animated, RefreshControl,
 } from 'react-native';
 import { Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,7 +20,9 @@ import ScrollToTop from '../components/ScrollToTop';
 const SCREEN_W = Dimensions.get('window').width;
 const CARD_GAP = 12;
 const CARD_PAD = 14;
-const CARD_W   = (SCREEN_W - CARD_PAD * 2 - CARD_GAP) / 2;
+const numColumns  = Platform.OS === 'web' && SCREEN_W > 700 ? 3 : 2;
+const WEB_CARD_BASE = Platform.OS === 'web' ? Math.min(SCREEN_W, 600) : SCREEN_W;
+const CARD_W   = (WEB_CARD_BASE - CARD_PAD * 2 - CARD_GAP * (numColumns - 1)) / numColumns;
 const CARD_H   = CARD_W * 1.4;  // standard playing card ratio (5:7)
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -49,7 +52,7 @@ const VIEWS = [
 let nextTaskId    = 5;
 let nextSubtaskId = 30;
 const newSubtask  = title => ({ id: String(nextSubtaskId++), title, status: 'pending', subtasks: [] });
-const BLANK       = () => ({ id: null, title: '', status: 'pending', energy: null, dueDate: '', nextDueDate: '', tags: [], subtasks: [], streak: 0, isPriority: false, statusHistory: {}, frequencyDays: null });
+const BLANK       = () => ({ id: null, title: '', status: 'pending', energy: null, dueDate: '', nextDueDate: '', tags: [], subtasks: [], streak: 0, isPriority: false, statusHistory: {}, frequencyDays: null, estimatedMinutes: null });
 
 // ── Recursive subtask helpers ─────────────────────────────────────────────────
 function mapSubtasks(subtasks, fn) {
@@ -464,6 +467,7 @@ function TaskRow({ task, onConfirmStatus, onOpen, onHistory }) {
               <Text style={[styles.metaChipText, { color: '#0284c7', fontWeight: '700' }]}>History</Text>
             </TouchableOpacity>
             {energy && <View style={[styles.metaChip, { backgroundColor: energy.bg }]}><Text style={[styles.metaChipText, { color: energy.color }]}>{energy.label}</Text></View>}
+            {task.estimatedMinutes ? <View style={styles.metaChip}><Ionicons name="hourglass-outline" size={10} color="#6b7280" /><Text style={styles.metaChipText}>~{task.estimatedMinutes >= 60 ? `${Math.floor(task.estimatedMinutes/60)}h${task.estimatedMinutes%60 ? ` ${task.estimatedMinutes%60}m` : ''}` : `${task.estimatedMinutes}m`}</Text></View> : null}
             {(task.dueDate || task.dueTime) ? <View style={styles.metaChip}><Ionicons name="calendar-outline" size={10} color="#6b7280" /><Text style={styles.metaChipText}>{task.dueDate} {task.dueTime}</Text></View> : null}
             {total > 0 && <View style={styles.metaChip}><Ionicons name="checkbox-outline" size={10} color="#6b7280" /><Text style={styles.metaChipText}>{done}/{total}</Text></View>}
             {(task.streak && task.streak > 0) ? <View style={[styles.metaChip, { backgroundColor: '#fee2e2' }]}><Ionicons name="flame" size={10} color="#ef4444" /><Text style={[styles.metaChipText, { color: '#ef4444' }]}>{task.streak}</Text></View> : null}
@@ -594,6 +598,12 @@ function TaskCard({ task, onConfirmStatus, onOpen, onHistory }) {
         {energy && (
           <View style={[styles.cardChip, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
             <Text style={[styles.cardChipText, { color: '#ffffff', fontWeight: '600' }]}>{energy.label}</Text>
+          </View>
+        )}
+        {task.estimatedMinutes && (
+          <View style={[styles.cardChip, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+            <Ionicons name="hourglass-outline" size={9} color="#ffffff" />
+            <Text style={[styles.cardChipText, { color: '#ffffff' }]}>{task.estimatedMinutes >= 60 ? `${Math.floor(task.estimatedMinutes/60)}h${task.estimatedMinutes%60 ? ` ${task.estimatedMinutes%60}m` : ''}` : `${task.estimatedMinutes}m`}</Text>
           </View>
         )}
         {(task.dueDate || task.dueTime) && (
@@ -845,6 +855,35 @@ function TaskDetailModal({ task, onSave, onDelete, onClose }) {
               </TouchableOpacity>
             ))}
           </View>
+
+          {/* Estimated Time */}
+          <Text style={styles.fieldLabel}>Estimated Time</Text>
+          <View style={styles.chipGroup}>
+            {[15, 30, 45, 60, 90, 120].map(m => {
+              const label = m >= 60 ? `${m / 60}h` : `${m}m`;
+              const isActive = draft.estimatedMinutes === m;
+              return (
+                <TouchableOpacity
+                  key={m}
+                  style={[styles.optChip, isActive && { backgroundColor: '#6366f1', borderColor: '#6366f1' }]}
+                  onPress={() => field('estimatedMinutes', isActive ? null : m)}
+                >
+                  <Text style={[styles.optChipText, isActive && { color: '#fff' }]}>{label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <TextInput
+            style={[styles.fieldInput, { marginTop: 6 }]}
+            placeholder="Custom minutes (e.g. 25)"
+            placeholderTextColor="#9ca3af"
+            keyboardType="number-pad"
+            value={draft.estimatedMinutes && ![15,30,45,60,90,120].includes(draft.estimatedMinutes) ? String(draft.estimatedMinutes) : ''}
+            onChangeText={v => {
+              const num = parseInt(v, 10);
+              field('estimatedMinutes', isNaN(num) ? null : Math.max(1, num));
+            }}
+          />
 
           {/* Dates & Time */}
           <View style={styles.dateRow}>
@@ -1467,7 +1506,16 @@ function FocusYourDay({ tasks, onComplete }) {
 }
 
 export default function TasksScreen() {
-  const { tasks, setTasks, logTaskEvent } = useTasks();
+  const { colors } = useTheme();
+  const { tasks, setTasks, logTaskEvent, isSyncing } = useTasks();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    // Refresh context will handle the logic in its useEffect deps, 
+    // but we can also trigger a manual force-fetch if needed.
+    setRefreshing(false);
+  };
   const { spendPoints, addFreeRoll, removeReward, incrementActiveStreak, incrementMissedStreak } = useEconomy();
   
   // Audio
@@ -1547,7 +1595,10 @@ export default function TasksScreen() {
 
   // Pipeline Filter logic
   let filtered = tasks;
-  if (search) filtered = filtered.filter(t => t.title.toLowerCase().includes(search.toLowerCase()));
+  if (search) {
+    const q = search.toLowerCase();
+    filtered = filtered.filter(t => t.title.toLowerCase().includes(q) || (t.tags || []).some(tag => tag.toLowerCase().includes(q)));
+  }
   if (filterStatus.length > 0) {
     filtered = filtered.filter(t => filterStatus.includes(t.status));
   }
@@ -1740,7 +1791,29 @@ export default function TasksScreen() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Ionicons name="checkbox-outline" size={24} color="#6366f1" />
-          <Text style={styles.headerTitle}>Tasks</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={styles.headerTitle}>Tasks</Text>
+            {isSyncing ? (
+              <View style={{ backgroundColor: colors.primary + '20', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary, marginRight: 6 }} />
+                <Text style={{ fontSize: 10, fontWeight: '700', color: colors.primary, textTransform: 'uppercase' }}>Syncing...</Text>
+              </View>
+            ) : (
+              <View style={{ 
+                backgroundColor: colors.green + '15', 
+                paddingHorizontal: 10, 
+                paddingVertical: 3, 
+                borderRadius: 20, 
+                flexDirection: 'row', 
+                alignItems: 'center',
+                borderWidth: 1,
+                borderColor: colors.green + '30'
+              }}>
+                <Ionicons name="cloud-done" size={12} color={colors.green} style={{ marginRight: 4 }} />
+                <Text style={{ fontSize: 10, fontWeight: '800', color: colors.green, textTransform: 'uppercase', letterSpacing: 0.5 }}>Synced</Text>
+              </View>
+            )}
+          </View>
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity style={styles.iconBtn} onPress={() => setShowSearch(s => !s)}>
@@ -1915,6 +1988,9 @@ export default function TasksScreen() {
           ref={listRef}
           sections={sections.map(s => ({ ...s, data: collapsedSections[s.title] ? [] : s.data }))}
           keyExtractor={(t, i) => String(t.id) + '-' + i}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          }
           renderItem={({ item }) => <TaskRow task={item} onConfirmStatus={confirmStatus} onOpen={setEditingTask} onHistory={setHistoryTask} />}
           renderSectionHeader={({ section }) => (
             <SectionHeader 
@@ -1939,11 +2015,14 @@ export default function TasksScreen() {
           ref={listRef}
           data={filtered}
           keyExtractor={(t, i) => String(t.id) + '-' + i}
-          numColumns={2}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          }
+          numColumns={numColumns}
           columnWrapperStyle={styles.cardRow}
           onScroll={handleScroll}
           scrollEventThrottle={16}
-          contentContainerStyle={styles.cardList}
+          contentContainerStyle={[styles.cardList, Platform.OS === 'web' && { maxWidth: 650, alignSelf: 'center', width: '100%' }]}
           renderItem={({ item }) => <TaskCard task={item} onConfirmStatus={confirmStatus} onOpen={setEditingTask} onHistory={setHistoryTask} />}
           ListEmptyComponent={<Text style={styles.empty}>No tasks — tap New or import.</Text>}
         />

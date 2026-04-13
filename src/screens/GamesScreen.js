@@ -191,17 +191,17 @@ function BattlePhase({
     <View style={styles.battleContainer}>
       <View style={styles.scoreBar}>
         <View style={styles.scoreItem}>
-          <Ionicons name="person" size={16} color={colors.primary} />
-          <Text style={styles.scoreLabel}>You</Text>
+          <Ionicons name="person" size={18} color={colors.primary} />
+          <Text style={[styles.scoreLabel, { color: colors.textPrimary }]}>You</Text>
           <View style={[styles.scoreBadge, { backgroundColor: colors.primary }]}>
             <Text style={styles.scoreBadgeText}>{playerCount}</Text>
           </View>
         </View>
-        <Text style={styles.vsText}>VS</Text>
+        <Text style={[styles.vsText, { color: colors.textSecondary }]}>VS</Text>
         <View style={styles.scoreItem}>
-          <Ionicons name="skull" size={16} color="#ef4444" />
-          <Text style={styles.scoreLabel}>Opponent</Text>
-          <View style={[styles.scoreBadge, { backgroundColor: '#ef4444' }]}>
+          <Ionicons name="skull" size={18} color={colors.red} />
+          <Text style={[styles.scoreLabel, { color: colors.textPrimary }]}>Foe</Text>
+          <View style={[styles.scoreBadge, { backgroundColor: colors.red }]}>
             <Text style={styles.scoreBadgeText}>{opponentCount}</Text>
           </View>
         </View>
@@ -452,8 +452,8 @@ function RecordDiceModal({ visible, onReward, colors, title = "NEW RECORD!" }) {
         <View style={diceStyles.body}>
           {step === 'rollBase' && (
             <View style={diceStyles.center}>
-              <Text style={diceStyles.title}>{title}</Text>
-              <Text style={diceStyles.sub}>Rolling d20 Base Reward...</Text>
+              <Text style={[diceStyles.title, { color: colors.textPrimary }]}>{title}</Text>
+              <Text style={[diceStyles.sub, { color: colors.textSecondary }]}>Rolling d20 Base Reward...</Text>
               <Animated.View style={{ transform: [{ rotate: spinVal.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '1080deg'] }) }] }}>
                 <Ionicons name="dice" size={80} color={colors.amber} />
               </Animated.View>

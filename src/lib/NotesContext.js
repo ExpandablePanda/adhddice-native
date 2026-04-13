@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useProfile } from './ProfileContext';
 import { supabase } from './supabase';
@@ -9,30 +10,49 @@ export function NotesProvider({ children }) {
   const { storagePrefix, user } = useProfile();
   const [notes, setNotes] = useState([]);
   const [loaded, setLoaded] = useState(false);
+  
+  const lastLocalChangeRef = useRef(0);
+  const isRemoteUpdateRef  = useRef(false);
+  const broadcastRef       = useRef(null);
 
-  // 1. Initial Load (Local + Cloud)
+  // BroadcastChannel for web multi-tab sync
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof BroadcastChannel !== 'undefined') {
+      const channelName = `notes_sync_${user?.id || 'anon'}`;
+      broadcastRef.current = new BroadcastChannel(channelName);
+      broadcastRef.current.onmessage = (event) => {
+        if (event.data?.type === 'NOTES_UPDATE' && event.data.storagePrefix === storagePrefix) {
+          isRemoteUpdateRef.current = true;
+          setNotes(event.data.notes);
+        }
+      };
+    }
+    return () => { if (broadcastRef.current) broadcastRef.current.close(); };
+  }, [user?.id, storagePrefix]);
+
+  // 1. Initial Load
   useEffect(() => {
     async function loadData() {
-      // Local first
+      setLoaded(false);
       const stored = await AsyncStorage.getItem(`${storagePrefix}notes`);
       if (stored) {
         try { setNotes(JSON.parse(stored)); } catch(e) {}
       }
 
-      // Cloud sync
       if (user) {
         try {
           const { data } = await supabase
             .from('user_notes')
-            .select('data')
+            .select('data, updated_at')
             .eq('user_id', user.id)
             .single();
 
-          if (data && data.data) {
+          if (data?.data) {
+            isRemoteUpdateRef.current = true;
             setNotes(data.data);
           }
         } catch (e) {
-          console.log('Notes cloud fetch failed', e);
+          console.log('Notes sync skipped', e);
         }
       }
       setLoaded(true);
@@ -40,53 +60,62 @@ export function NotesProvider({ children }) {
     loadData();
   }, [storagePrefix, user]);
 
-  // 1b. Real-time Subscription
+  // 1b. Real-time
   useEffect(() => {
     if (!user) return;
-
     const channel = supabase
       .channel(`rt:user_notes:${user.id}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'user_notes', filter: `user_id=eq.${user.id}` },
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_notes', filter: `user_id=eq.${user.id}` },
         (payload) => {
-          if (payload.new && payload.new.data) {
-            const cloudStr = JSON.stringify(payload.new.data);
-            AsyncStorage.getItem(`${storagePrefix}notes`).then(localStr => {
-              if (cloudStr !== localStr) setNotes(payload.new.data);
-            });
+          if (payload.new?.data) {
+            const remoteTime = new Date(payload.new.updated_at).getTime();
+            if (remoteTime > lastLocalChangeRef.current + 1000) {
+              isRemoteUpdateRef.current = true;
+              setNotes(payload.new.data);
+            }
           }
         }
       )
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
-  }, [user, storagePrefix]);
+  }, [user]);
 
-  // 2. Save Data (Local + Cloud)
+  // 2. Save
   useEffect(() => {
     if (!loaded || !user) return;
+    if (isRemoteUpdateRef.current) {
+      isRemoteUpdateRef.current = false;
+      return;
+    }
+
+    lastLocalChangeRef.current = Date.now();
+
+    if (broadcastRef.current) {
+      broadcastRef.current.postMessage({ type: 'NOTES_UPDATE', notes, storagePrefix });
+    }
 
     const saveData = async () => {
-      const notesStr = JSON.stringify(notes);
-      // Save local
-      await AsyncStorage.setItem(`${storagePrefix}notes`, notesStr);
+      const dataToSave = notes;
+      await AsyncStorage.setItem(`${storagePrefix}notes`, JSON.stringify(dataToSave));
 
-      // Save to Cloud
       try {
-        const { data: remote } = await supabase.from('user_notes').select('data').eq('user_id', user.id).single();
-        if (remote && JSON.stringify(remote.data) === notesStr) return;
-
-        await supabase
+        const { error } = await supabase
           .from('user_notes')
-          .upsert({ user_id: user.id, data: notes, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+          .upsert({ user_id: user.id, data: dataToSave, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+        if (error) throw error;
       } catch (e) {
         console.error('Notes cloud save failed', e);
       }
     };
 
-    const timeoutId = setTimeout(saveData, 1000);
-    return () => clearTimeout(timeoutId);
+    const timeoutId = setTimeout(saveData, 1500);
+    const handleUnload = () => saveData();
+    if (Platform.OS === 'web') window.addEventListener('beforeunload', handleUnload);
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (Platform.OS === 'web') window.removeEventListener('beforeunload', handleUnload);
+    };
   }, [notes, loaded, user, storagePrefix]);
 
   const addNote = (title, content, tags = []) => {
@@ -126,3 +155,4 @@ export function useNotes() {
   if (!context) throw new Error('useNotes must be used within NotesProvider');
   return context;
 }
+
