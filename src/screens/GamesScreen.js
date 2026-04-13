@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
-import { Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
+import { useAudioPlayer, setIsAudioActiveAsync } from 'expo-audio';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  SafeAreaView, Alert, Animated, Easing, Dimensions, Modal, Image
+  Alert, Animated, Easing, Dimensions, Modal, Image
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../lib/ThemeContext';
@@ -542,50 +543,35 @@ function WarGame({ onBack, tasks, colors }) {
   const [waitingForPlayer, setWaitingForPlayer] = useState(false);
 
   // Audio
-  const flipSoundRef = useRef(null);
-  const shuffleSoundRef = useRef(null);
+  const flipPlayer = useAudioPlayer(require('../../assets/card-flip.mp3'));
+  const shufflePlayer = useAudioPlayer(require('../../assets/card-shuffle.mp3'));
+
   useEffect(() => {
     async function setupAudio() {
       try {
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          allowsRecordingIOS: false,
-          interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
-          shouldDuckAndroid: true,
-          interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-        });
-
-        // Pre-load sounds
-        const { sound: flipSnd } = await Audio.Sound.createAsync(require('../../assets/card-flip.mp3'));
-        flipSoundRef.current = flipSnd;
-
-        const { sound: shufSnd } = await Audio.Sound.createAsync(require('../../assets/card-shuffle.mp3'));
-        shuffleSoundRef.current = shufSnd;
-
+        await setIsAudioActiveAsync(true);
         console.log('✅ All sounds pre-loaded successfully');
       } catch (e) {
         console.log('Audio setup error:', e);
       }
     }
     setupAudio();
-    return () => {
-      if (flipSoundRef.current) flipSoundRef.current.unloadAsync();
-      if (shuffleSoundRef.current) shuffleSoundRef.current.unloadAsync();
-    };
   }, []);
 
   async function playFlipSound() {
     try {
-      if (flipSoundRef.current) {
-        await flipSoundRef.current.replayAsync();
+      if (flipPlayer) {
+        if (flipPlayer.playing) await flipPlayer.seekTo(0);
+        flipPlayer.play();
       }
     } catch (e) {}
   }
 
   async function playShuffleSound() {
     try {
-      if (shuffleSoundRef.current) {
-        await shuffleSoundRef.current.replayAsync();
+      if (shufflePlayer) {
+        if (shufflePlayer.playing) await shufflePlayer.seekTo(0);
+        shufflePlayer.play();
       }
     } catch (e) {}
   }

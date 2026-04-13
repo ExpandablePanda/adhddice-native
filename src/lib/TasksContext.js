@@ -68,8 +68,12 @@ export function TasksProvider({ children }) {
           if (data?.data) {
             // Only update if cloud has content
             isRemoteUpdateRef.current = true;
-            setTasks(data.data);
-            // We assume history is local-only or we could sync it too if needed
+            if (Array.isArray(data.data)) {
+              setTasks(data.data);
+            } else if (data.data.tasks) {
+              setTasks(data.data.tasks);
+              if (data.data.history) setTaskHistory(data.data.history);
+            }
           }
         } catch (e) {
           console.log('Tasks initial cloud sync skipped or failed', e);
@@ -96,7 +100,12 @@ export function TasksProvider({ children }) {
           // We allow a small 1s buffer for clock skew
           if (remoteTime > lastLocalChangeRef.current + 1000) {
             isRemoteUpdateRef.current = true;
-            setTasks(payload.new.data);
+            if (Array.isArray(payload.new.data)) {
+              setTasks(payload.new.data);
+            } else if (payload.new.data.tasks) {
+              setTasks(payload.new.data.tasks);
+              if (payload.new.data.history) setTaskHistory(payload.new.data.history);
+            }
           }
         }
       })
@@ -143,7 +152,7 @@ export function TasksProvider({ children }) {
           .from('user_tasks')
           .upsert({ 
             user_id: user.id, 
-            data: dataToSave,
+            data: { tasks: dataToSave, history: historyToSave },
             updated_at: new Date().toISOString()
           }, { onConflict: 'user_id' });
         

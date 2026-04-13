@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ScrollView, SafeAreaView,
+  KeyboardAvoidingView, Platform, ScrollView,
   ActivityIndicator, Alert, Image, Dimensions
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useProfile } from '../lib/ProfileContext';
 import { Ionicons } from '@expo/vector-icons';
 

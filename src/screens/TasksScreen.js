@@ -3,9 +3,10 @@ import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, SectionList, FlatList, TouchableOpacity, TextInput,
   StyleSheet, Modal, KeyboardAvoidingView, Platform,
-  SafeAreaView, ScrollView, Alert, Animated, RefreshControl,
+  ScrollView, Alert, Animated, RefreshControl,
 } from 'react-native';
-import { Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAudioPlayer, setIsAudioActiveAsync } from 'expo-audio';
 import { Ionicons } from '@expo/vector-icons';
 import { Dimensions } from 'react-native';
 import { useTasks } from '../lib/TasksContext';
@@ -1519,38 +1520,33 @@ export default function TasksScreen() {
   const { spendPoints, addFreeRoll, removeReward, incrementActiveStreak, incrementMissedStreak } = useEconomy();
   
   // Audio
-  const shuffleSoundRef = useRef(null);
+  const shufflePlayer = useAudioPlayer(require('../../assets/card-shuffle.mp3'));
+
   useEffect(() => {
     async function setupAudio() {
       try {
         console.log('🎵 Setting up Tasks audio mode...');
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          allowsRecordingIOS: false,
-          interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
-          shouldDuckAndroid: true,
-          interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-        });
-        console.log('🎵 Pre-loading card-shuffle.mp3...');
-        const { sound } = await Audio.Sound.createAsync(require('../../assets/card-shuffle.mp3'));
-        shuffleSoundRef.current = sound;
-        console.log('✅ Tasks shuffle sound loaded successfully');
+        // setAudioModeAsync is now handled by expo-audio or global config
+        await setIsAudioActiveAsync(true);
+        console.log('✅ Tasks audio active');
       } catch (e) {
         console.log('❌ Tasks audio setup error:', e);
       }
     }
     setupAudio();
-    return () => { if (shuffleSoundRef.current) shuffleSoundRef.current.unloadAsync(); };
   }, []);
 
   async function playShuffleSound() {
     try {
       console.log('🎵 Attempting to play shuffle sound...');
-      if (shuffleSoundRef.current) {
-        await shuffleSoundRef.current.replayAsync();
+      if (shufflePlayer) {
+        if (shufflePlayer.playing) {
+          await shufflePlayer.seekTo(0);
+        }
+        shufflePlayer.play();
         console.log('🎵 Shuffle sound played!');
       } else {
-        console.log('⚠️ Shuffle sound ref is null');
+        console.log('⚠️ Shuffle player is null');
       }
     } catch (e) {
       console.log('❌ Error playing shuffle sound:', e);

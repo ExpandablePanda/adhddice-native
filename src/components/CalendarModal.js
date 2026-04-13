@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, SafeAreaView, Platform, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, Platform, Dimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const SCREEN_W = Dimensions.get('window').width;
 const isWeb = Platform.OS === 'web';
