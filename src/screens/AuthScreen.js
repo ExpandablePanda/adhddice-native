@@ -50,7 +50,7 @@ export default function AuthScreen() {
               source={require('../../assets/logo.png')}
               style={styles.logo}
             />
-            <Text style={styles.welcomeTitle}>ADHD'DICE</Text>
+            <Text style={styles.welcomeTitle}>ADHDice</Text>
             <Text style={styles.tagline}>Sync your focus, conquer your day</Text>
           </View>
 

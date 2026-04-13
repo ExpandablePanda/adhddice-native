@@ -45,7 +45,7 @@ export default function LandingScreen() {
         </View>
 
         {/* Version */}
-        <Text style={styles.version}>ADH'DICE v1.0</Text>
+        <Text style={styles.version}>ADHDice v1.0</Text>
       </View>
     </SafeAreaView>
   );

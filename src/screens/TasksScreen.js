@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-// ADHD'DICE: Cloud-Sync & Real-time Enabled 🚀
+// ADHDice: Cloud-Sync & Real-time Enabled 🚀
 import {
   View, Text, SectionList, FlatList, TouchableOpacity, TextInput,
   StyleSheet, Modal, KeyboardAvoidingView, Platform,

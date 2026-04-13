@@ -329,7 +329,7 @@ export default function SettingsScreen() {
         </View>
 
         <Text style={[styles.sectionLabel, { textAlign: 'center', marginTop: 40, color: colors.textMuted }]}>
-          ADH'DICE v1.0{'\n'}Local Storage Build
+          ADHDice v1.0{'\n'}Local Storage Build
         </Text>
 
       </ScrollView>
