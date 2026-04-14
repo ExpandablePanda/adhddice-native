@@ -63,8 +63,10 @@ function isSameDay(d1, d2) {
 
 function getWeekStart(date) {
   const d = new Date(date);
-  d.setDate(d.getDate() - d.getDay());
   d.setHours(0, 0, 0, 0);
+  const day = d.getDay(); // 0 (Sun) to 6 (Sat)
+  const diff = (day === 0 ? -6 : 1) - day;
+  d.setDate(d.getDate() + diff);
   return d;
 }
 
@@ -73,7 +75,6 @@ function getMonthStart(date) {
 }
 
 // ── Generate sample data for demo ───────────────────────────────────────────
-let nextEntryId = 100;
 function generateSampleEntries() {
   const entries = [];
   const now = new Date();
@@ -88,7 +89,7 @@ function generateSampleEntries() {
       const cat = cats[Math.floor(Math.random() * cats.length)];
       const minutes = (Math.floor(Math.random() * 6) + 1) * 15; // 15–90 min
       entries.push({
-        id: String(nextEntryId++),
+        id: 'sample_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
         category: cat.key,
         minutes,
         date: new Date(date.getFullYear(), date.getMonth(), date.getDate()),
@@ -142,10 +143,38 @@ const chartStyles = StyleSheet.create({
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
+// GOAL PROGRESS BAR
+// ═════════════════════════════════════════════════════════════════════════════
+
+function GoalProgressBar({ label, current, goal, color }) {
+  const pct = goal > 0 ? Math.min((current / goal) * 100, 100) : 0;
+  return (
+    <View style={goalStyles.barContainer}>
+      <View style={goalStyles.barHeader}>
+        <Text style={goalStyles.barLabel}>{label}</Text>
+        <Text style={goalStyles.barValue}>{fmtDuration(current)} / {fmtDuration(goal)}</Text>
+      </View>
+      <View style={goalStyles.barBg}>
+        <View style={[goalStyles.barFill, { width: `${pct}%`, backgroundColor: color }]} />
+      </View>
+    </View>
+  );
+}
+
+const goalStyles = StyleSheet.create({
+  barContainer: { marginBottom: 10 },
+  barHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  barLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
+  barValue: { fontSize: 11, fontWeight: '700', color: colors.primary },
+  barBg: { height: 6, backgroundColor: '#e5e7eb', borderRadius: 3 },
+  barFill: { height: 6, borderRadius: 3 },
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
 // CATEGORY BREAKDOWN
 // ═════════════════════════════════════════════════════════════════════════════
 
-function CategoryBreakdown({ entries, period, categories = DEFAULT_CATEGORIES }) {
+function CategoryBreakdown({ entries, period, categories = DEFAULT_CATEGORIES, goals = {} }) {
   const cats = categories;
   const now = new Date();
 
@@ -163,8 +192,11 @@ function CategoryBreakdown({ entries, period, categories = DEFAULT_CATEGORIES })
 
   const sorted = cats
     .map(c => ({ ...c, minutes: totals[c.key] || 0 }))
-    .filter(c => c.minutes > 0)
-    .sort((a, b) => b.minutes - a.minutes);
+    .filter(c => period === 'today' ? true : c.minutes > 0)
+    .sort((a, b) => {
+      if (b.minutes !== a.minutes) return b.minutes - a.minutes;
+      return a.label.localeCompare(b.label);
+    });
 
   const totalMins = sorted.reduce((acc, c) => acc + c.minutes, 0);
 
@@ -176,6 +208,14 @@ function CategoryBreakdown({ entries, period, categories = DEFAULT_CATEGORIES })
     <View style={styles.breakdownList}>
       {sorted.map(cat => {
         const pct = totalMins > 0 ? (cat.minutes / totalMins) * 100 : 0;
+        
+        // Calculate goal display for today
+        const catGoals = goals[cat.key];
+        let displayGoal = 0;
+        if (period === 'today' && catGoals) {
+          displayGoal = catGoals.daily > 0 ? catGoals.daily : (catGoals.weekly > 0 ? Math.round(catGoals.weekly / 7) : 0);
+        }
+
         return (
           <View key={cat.key} style={styles.breakdownRow}>
             <View style={[styles.breakdownIcon, { backgroundColor: cat.color + '18' }]}>
@@ -184,7 +224,10 @@ function CategoryBreakdown({ entries, period, categories = DEFAULT_CATEGORIES })
             <View style={styles.breakdownInfo}>
               <View style={styles.breakdownTop}>
                 <Text style={styles.breakdownLabel}>{cat.label}</Text>
-                <Text style={styles.breakdownTime}>{fmtDuration(cat.minutes)}</Text>
+                <Text style={styles.breakdownTime}>
+                  {fmtDuration(cat.minutes)}
+                  {displayGoal > 0 ? ` / ${fmtDuration(displayGoal)}` : ''}
+                </Text>
               </View>
               <View style={styles.breakdownBarBg}>
                 <View style={[styles.breakdownBarFill, { width: `${pct}%`, backgroundColor: cat.color }]} />
@@ -199,6 +242,108 @@ function CategoryBreakdown({ entries, period, categories = DEFAULT_CATEGORIES })
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// CALENDAR PICKER MODAL
+// ═════════════════════════════════════════════════════════════════════════════
+
+function FocusCalendarModal({ visible, currentDate, onSelect, onClose }) {
+  const [viewDate, setViewDate] = useState(new Date(currentDate));
+  
+  const headerDate = viewDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+  
+  const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
+  const firstDayOfMonth = (y, m) => new Date(y, m, 1).getDay(); // 0 (Sun) to 6 (Sat)
+  
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  
+  const numDays = daysInMonth(year, month);
+  const startDay = firstDayOfMonth(year, month);
+  
+  // Adjust startDay for Monday start (0=Mon...6=Sun)
+  const mondayStartIdx = startDay === 0 ? 6 : startDay - 1;
+  
+  const calendarDays = [];
+  for (let i = 0; i < mondayStartIdx; i++) calendarDays.push(null);
+  for (let d = 1; d <= numDays; d++) calendarDays.push(d);
+  
+  const changeMonth = (delta) => {
+    setViewDate(new Date(year, month + delta, 1));
+  };
+
+  const isSelected = (day) => {
+    if (!day) return false;
+    return currentDate.getFullYear() === year && currentDate.getMonth() === month && currentDate.getDate() === day;
+  };
+
+  const isToday = (day) => {
+    if (!day) return false;
+    const now = new Date();
+    return now.getFullYear() === year && now.getMonth() === month && now.getDate() === day;
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }}>
+        <View style={{ width: '90%', maxWidth: 360, backgroundColor: '#fff', borderRadius: 24, padding: 20 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <TouchableOpacity onPress={() => changeMonth(-1)} style={{ padding: 8 }}>
+              <Ionicons name="chevron-back" size={24} color={colors.primary} />
+            </TouchableOpacity>
+            <Text style={{ fontSize: 18, fontWeight: '800', color: '#111827' }}>{headerDate}</Text>
+            <TouchableOpacity onPress={() => changeMonth(1)} style={{ padding: 8 }}>
+              <Ionicons name="chevron-forward" size={24} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+          
+          <View style={{ flexDirection: 'row', marginBottom: 10 }}>
+            {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+              <Text key={i} style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '700', color: '#9ca3af' }}>{d}</Text>
+            ))}
+          </View>
+          
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+            {calendarDays.map((day, i) => (
+              <TouchableOpacity 
+                key={i} 
+                disabled={!day}
+                onPress={() => {
+                  onSelect(new Date(year, month, day));
+                  onClose();
+                }}
+                style={{ 
+                  width: '14.28%', 
+                  aspectRatio: 1, 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  borderRadius: 12,
+                  backgroundColor: isSelected(day) ? colors.primary : 'transparent',
+                  borderWidth: isToday(day) && !isSelected(day) ? 1 : 0,
+                  borderColor: colors.primary
+                }}
+              >
+                {day && (
+                  <Text style={{ 
+                    fontSize: 14, 
+                    fontWeight: isSelected(day) || isToday(day) ? '700' : '500',
+                    color: isSelected(day) ? '#fff' : (day ? '#111827' : 'transparent')
+                  }}>
+                    {day}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+          
+          <TouchableOpacity onPress={onClose} style={{ marginTop: 20, padding: 12, alignItems: 'center' }}>
+            <Text style={{ color: colors.primary, fontWeight: '700' }}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // ADD / EDIT ENTRY MODAL
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -207,8 +352,9 @@ function EntryModal({ visible, entry, onSave, onDelete, onClose, categories = DE
   const [category, setCategory] = useState(entry?.category || categories[0]?.key || 'work');
   const [hours, setHours]       = useState('');
   const [mins, setMins]         = useState('');
-  const [dateStr, setDateStr]   = useState('');
+  const [date, setDate]         = useState(new Date());
   const [note, setNote]         = useState('');
+  const [showCalendar, setShowCalendar] = useState(false);
 
   useEffect(() => {
     if (visible && entry) {
@@ -216,13 +362,13 @@ function EntryModal({ visible, entry, onSave, onDelete, onClose, categories = DE
       const totalMin = entry.minutes || 0;
       setHours(totalMin >= 60 ? String(Math.floor(totalMin / 60)) : '');
       setMins(String(totalMin % 60 || (totalMin < 60 ? totalMin : 0)));
-      setDateStr(entry.date ? fmtDate(entry.date) : fmtDate(new Date()));
+      setDate(entry.date ? new Date(entry.date) : new Date());
       setNote(entry.note || '');
     } else if (visible) {
       setCategory('work');
       setHours('');
       setMins('');
-      setDateStr(fmtDate(new Date()));
+      setDate(new Date());
       setNote('');
     }
   }, [visible, entry]);
@@ -236,16 +382,8 @@ function EntryModal({ visible, entry, onSave, onDelete, onClose, categories = DE
       return;
     }
 
-    // Parse date
-    const parts = dateStr.split('/');
-    let date = new Date();
-    if (parts.length === 3) {
-      const parsed = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]));
-      if (!isNaN(parsed.getTime())) date = parsed;
-    }
-
     onSave({
-      id: entry?.id || String(nextEntryId++),
+      id: entry?.id || 'entry_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
       category,
       minutes: totalMin,
       date,
@@ -340,14 +478,19 @@ function EntryModal({ visible, entry, onSave, onDelete, onClose, categories = DE
             ))}
           </View>
 
-          {/* Date */}
-          <Text style={styles.fieldLabel}>Date</Text>
-          <TextInput
-            style={styles.fieldInput}
-            placeholder="MM/DD/YYYY"
-            placeholderTextColor="#9ca3af"
-            value={dateStr}
-            onChangeText={setDateStr}
+          <TouchableOpacity 
+            style={[styles.fieldInput, { justifyContent: 'center' }]} 
+            onPress={() => setShowCalendar(true)}
+          >
+            <Text style={{ color: '#111827' }}>{date.toLocaleDateString()}</Text>
+            <Ionicons name="calendar-outline" size={16} color={colors.primary} style={{ position: 'absolute', right: 12 }} />
+          </TouchableOpacity>
+
+          <FocusCalendarModal 
+            visible={showCalendar}
+            currentDate={date}
+            onSelect={setDate}
+            onClose={() => setShowCalendar(false)}
           />
 
           {/* Note */}
@@ -370,6 +513,12 @@ function EntryModal({ visible, entry, onSave, onDelete, onClose, categories = DE
     </Modal>
   );
 }
+
+// ── Palette for categories ───────────────────────────────────────────────────
+const CATEGORY_COLORS = [
+  '#4f46e5', '#0891b2', '#7c3aed', '#059669', '#d97706', 
+  '#ec4899', '#ef4444', '#10b981', '#f59e0b', '#3b82f6', '#6b7280'
+];
 
 // ═════════════════════════════════════════════════════════════════════════════
 // CATEGORY MANAGER MODAL
@@ -488,33 +637,62 @@ function CategoryManagerModal({ visible, categories, onClose, onSave }) {
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={[styles.modalBody, { paddingBottom: 120 }]} keyboardShouldPersistTaps="handled">
             {drafts.map((cat, idx) => (
-              <View key={cat.key || idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                <View style={{ gap: 2 }}>
-                  <TouchableOpacity onPress={() => moveCat(idx, -1)} style={{ padding: 4, opacity: idx === 0 ? 0.3 : 1 }} disabled={idx === 0}>
-                    <Ionicons name="chevron-up" size={16} color="#6b7280" />
+              <View key={cat.key || idx} style={{ marginBottom: 20, padding: 12, backgroundColor: '#f9fafb', borderRadius: 14, borderWidth: 1, borderColor: '#e5e7eb' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <View style={{ gap: 2 }}>
+                    <TouchableOpacity onPress={() => moveCat(idx, -1)} style={{ padding: 4, opacity: idx === 0 ? 0.3 : 1 }} disabled={idx === 0}>
+                      <Ionicons name="chevron-up" size={16} color="#6b7280" />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => moveCat(idx, 1)} style={{ padding: 4, opacity: idx === drafts.length - 1 ? 0.3 : 1 }} disabled={idx === drafts.length - 1}>
+                      <Ionicons name="chevron-down" size={16} color="#6b7280" />
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <TouchableOpacity
+                    onPress={() => setPickerIdx(idx)}
+                    style={{ width: 44, height: 44, borderRadius: 10, backgroundColor: cat.color || '#374151', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    {ICON_PICKER_ICONS.includes(cat.icon)
+                      ? <Ionicons name={cat.icon} size={22} color="#fff" />
+                      : <Text style={{ fontSize: 22 }}>{cat.icon || '✨'}</Text>
+                    }
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => moveCat(idx, 1)} style={{ padding: 4, opacity: idx === drafts.length - 1 ? 0.3 : 1 }} disabled={idx === drafts.length - 1}>
-                    <Ionicons name="chevron-down" size={16} color="#6b7280" />
+
+                  <TextInput
+                    style={[styles.fieldInput, { flex: 1, height: 44 }]}
+                    value={cat.label}
+                    onChangeText={(v) => updateCat(idx, 'label', v)}
+                    placeholder="Category Name"
+                  />
+                  
+                  <TouchableOpacity onPress={() => removeCat(idx)} style={{ padding: 8 }}>
+                    <Ionicons name="trash-outline" size={20} color="#ef4444" />
                   </TouchableOpacity>
                 </View>
-                <TouchableOpacity
-                  onPress={() => setPickerIdx(idx)}
-                  style={{ width: 50, height: 44, borderRadius: 10, backgroundColor: cat.color || '#374151', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#4b5563' }}
-                >
-                  {ICON_PICKER_ICONS.includes(cat.icon)
-                    ? <Ionicons name={cat.icon} size={22} color="#fff" />
-                    : <Text style={{ fontSize: 22 }}>{cat.icon || '✨'}</Text>
-                  }
-                </TouchableOpacity>
-                <TextInput
-                  style={[styles.fieldInput, { flex: 1 }]}
-                  value={cat.label}
-                  onChangeText={(v) => updateCat(idx, 'label', v)}
-                  placeholder="Category Name"
-                />
-                <TouchableOpacity onPress={() => removeCat(idx)} style={{ padding: 8 }}>
-                  <Ionicons name="trash-outline" size={20} color="#ef4444" />
-                </TouchableOpacity>
+
+                <View style={{ paddingLeft: 34 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 }}>Category Color</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+                    {CATEGORY_COLORS.map(c => (
+                      <TouchableOpacity 
+                        key={c} 
+                        onPress={() => updateCat(idx, 'color', c)}
+                        style={{ 
+                          width: 24, 
+                          height: 24, 
+                          borderRadius: 12, 
+                          backgroundColor: c, 
+                          borderWidth: cat.color === c ? 2 : 0, 
+                          borderColor: '#fff',
+                          shadowColor: '#000',
+                          shadowOpacity: cat.color === c ? 0.3 : 0,
+                          shadowRadius: 3,
+                          elevation: cat.color === c ? 3 : 0
+                        }}
+                      />
+                    ))}
+                  </ScrollView>
+                </View>
               </View>
             ))}
             <TouchableOpacity onPress={addCat} style={{ marginTop: 12, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: '#6366f1', alignItems: 'center' }}>
@@ -544,6 +722,132 @@ function CategoryManagerModal({ visible, categories, onClose, onSave }) {
 // Format (one session per line):  YYYY-MM-DD, minutes, category_key
 // Example:  2024-03-15, 45, work
 // ─────────────────────────────────────────────────────────────────────────────
+function GoalSettingModal({ visible, categories, goals, onSave, onClose }) {
+  const [draft, setDraft] = useState(goals);
+
+  useEffect(() => {
+    if (visible) {
+      const newDraft = { ...goals };
+      categories.forEach(cat => {
+        if (newDraft[cat.key] && (newDraft[cat.key].daily || 0) === 0 && (newDraft[cat.key].weekly || 0) > 0) {
+          newDraft[cat.key] = {
+            ...newDraft[cat.key],
+            daily: Math.round(newDraft[cat.key].weekly / 7)
+          };
+        }
+      });
+      setDraft(newDraft);
+    }
+  }, [visible, goals]);
+
+  function updateGoalPart(catKey, period, unit, val) {
+    const num = parseInt(val, 10) || 0;
+    setDraft(prev => {
+      const currentTotal = prev[catKey]?.[period] || 0;
+      const h = Math.floor(currentTotal / 60);
+      const m = currentTotal % 60;
+      const newTotal = unit === 'h' ? (num * 60 + m) : (h * 60 + num);
+      
+      let next = {
+        ...(prev[catKey] || { daily: 0, weekly: 0 }),
+        [period]: newTotal
+      };
+
+      // If updating weekly, auto-fill daily avg
+      if (period === 'weekly') {
+        next.daily = Math.round(newTotal / 7);
+      }
+
+      return { ...prev, [catKey]: next };
+    });
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide">
+      <ModalScreen style={styles.modalScreen}>
+        <View style={styles.modalHeader}>
+          <TouchableOpacity onPress={onClose} style={styles.iconBtn}>
+            <Ionicons name="close" size={22} color={colors.textSecondary} />
+          </TouchableOpacity>
+          <Text style={styles.modalTitle}>Focus Goals</Text>
+          <TouchableOpacity onPress={() => onSave(draft)} style={styles.iconBtn}>
+            <Ionicons name="checkmark" size={22} color="#10b981" />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
+          <Text style={{ fontSize: 14, color: colors.textMuted, marginBottom: 20 }}> Set daily and weekly time targets for each category. </Text>
+          
+          {categories.map(cat => (
+            <View key={cat.key} style={{ marginBottom: 24, padding: 16, backgroundColor: '#f9fafb', borderRadius: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <Ionicons name={cat.icon} size={18} color={cat.color} />
+                <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textPrimary }}>{cat.label}</Text>
+              </View>
+
+              <View style={{ gap: 12 }}>
+                {/* Daily */}
+                <View>
+                  <Text style={styles.fieldLabel}>Daily Goal</Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <TextInput
+                        style={[styles.fieldInput, { flex: 1, textAlign: 'center' }]}
+                        keyboardType="number-pad"
+                        placeholder="0"
+                        value={String(Math.floor((draft[cat.key]?.daily || 0) / 60) || '')}
+                        onChangeText={(v) => updateGoalPart(cat.key, 'daily', 'h', v)}
+                      />
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary }}>H</Text>
+                    </View>
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <TextInput
+                        style={[styles.fieldInput, { flex: 1, textAlign: 'center' }]}
+                        keyboardType="number-pad"
+                        placeholder="0"
+                        value={String((draft[cat.key]?.daily || 0) % 60 || '')}
+                        onChangeText={(v) => updateGoalPart(cat.key, 'daily', 'm', v)}
+                      />
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary }}>M</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Weekly */}
+                <View>
+                  <Text style={styles.fieldLabel}>Weekly Goal</Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <TextInput
+                        style={[styles.fieldInput, { flex: 1, textAlign: 'center' }]}
+                        keyboardType="number-pad"
+                        placeholder="0"
+                        value={String(Math.floor((draft[cat.key]?.weekly || 0) / 60) || '')}
+                        onChangeText={(v) => updateGoalPart(cat.key, 'weekly', 'h', v)}
+                      />
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary }}>H</Text>
+                    </View>
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <TextInput
+                        style={[styles.fieldInput, { flex: 1, textAlign: 'center' }]}
+                        keyboardType="number-pad"
+                        placeholder="0"
+                        value={String((draft[cat.key]?.weekly || 0) % 60 || '')}
+                        onChangeText={(v) => updateGoalPart(cat.key, 'weekly', 'm', v)}
+                      />
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary }}>M</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+      </ModalScreen>
+    </Modal>
+  );
+}
+
 function FocusImportModal({ visible, categories, onClose, onImport }) {
   const [text, setText] = useState('');
   const [preview, setPreview] = useState([]);
@@ -776,6 +1080,7 @@ export default function FocusScreen() {
   const {
     entries, addEntry, deleteEntry, updateEntry,
     categories, setCategories,
+    goals, setGoals,
     timerState, setTimerState,
   } = useFocus();
   const { addReward } = useEconomy();
@@ -785,7 +1090,8 @@ export default function FocusScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCatModal, setShowCatModal] = useState(false);
   const [showImport, setShowImport]     = useState(false);
-  const [statsPeriod, setStatsPeriod]   = useState('today');
+  const [showGoalsModal, setShowGoalsModal] = useState(false);
+  const [statsPeriod, setStatsPeriod]   = useState('week');
   const [pendingFocusReward, setPendingFocusReward] = useState(null); // { minutes, basePoints }
   const intervalRef = useRef(null);
   const scrollRef = useRef(null);
@@ -850,7 +1156,7 @@ export default function FocusScreen() {
         note: '',
       };
       addEntry(newEntry);
-      const basePoints = Math.floor(minutes * 0.5);
+      const basePoints = Math.max(1, Math.floor(minutes * 0.5));
       if (basePoints > 0) {
         setPendingFocusReward({ minutes, basePoints });
       } else {
@@ -891,8 +1197,8 @@ export default function FocusScreen() {
       updateEntry(entry);
     } else {
       addEntry(entry);
-      // Award focus points: 0.5 pts per minute, then offer D6 doubler
-      basePoints = Math.floor(entry.minutes * 0.5);
+      // Award focus points: 0.5 pts per minute, then offer D6 doubler (min 1 pt)
+      basePoints = Math.max(1, Math.floor(entry.minutes * 0.5));
     }
     
     setEditEntry(null);
@@ -1032,12 +1338,66 @@ export default function FocusScreen() {
             <Text style={styles.todayLabel}>Today</Text>
             <Text style={styles.todayTotal}>{fmtDuration(todayTotal)}</Text>
           </View>
-          {todayEntries.length > 0 ? (
-            <CategoryBreakdown entries={entries} period="today" categories={categories} />
-          ) : (
-            <Text style={styles.emptyNote}>No time logged today. Start the timer or add manually!</Text>
-          )}
+          <CategoryBreakdown 
+            entries={entries} 
+            period="today" 
+            categories={categories} 
+            goals={goals} 
+          />
         </View>
+
+        {/* ── Goals & Progress Tracking ── */}
+        {Object.keys(goals).length === 0 ? (
+          <View style={styles.promptCard}>
+            <Ionicons name="trophy-outline" size={32} color="#8b5cf6" />
+            <Text style={styles.promptTitle}>Set Your Focus Goals!</Text>
+            <Text style={styles.promptText}>Stay consistent by setting daily or weekly time targets for your favorite categories.</Text>
+            <TouchableOpacity style={styles.promptBtn} onPress={() => setShowGoalsModal(true)}>
+              <Text style={styles.promptBtnText}>Setup Goals</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.goalCard}>
+            <View style={styles.goalCardHeader}>
+              <Text style={styles.goalCardTitle}>Category Goals</Text>
+              <TouchableOpacity style={styles.goalEditBtn} onPress={() => setShowGoalsModal(true)}>
+                <Ionicons name="create-outline" size={14} color={colors.primary} />
+                <Text style={styles.goalEditBtnText}>Edit</Text>
+              </TouchableOpacity>
+            </View>
+
+            {categories.filter(c => goals[c.key] && (goals[c.key].daily > 0 || goals[c.key].weekly > 0)).map(cat => {
+              const catEntries = entries.filter(e => e.category === cat.key);
+              
+              const dayItems = catEntries.filter(e => isSameDay(new Date(e.date), new Date()));
+              const dayMin   = dayItems.reduce((acc, curr) => acc + curr.minutes, 0);
+              
+              const weekStart = getWeekStart(new Date());
+              const weekItems = catEntries.filter(e => new Date(e.date) >= weekStart);
+              const weekMin   = weekItems.reduce((acc, curr) => acc + curr.minutes, 0);
+
+              const catGoals = goals[cat.key];
+
+              return (
+                <View key={cat.key} style={styles.categoryGoalRow}>
+                  <View style={styles.categoryGoalHeader}>
+                    <Ionicons name={cat.icon} size={14} color={cat.color} />
+                    <Text style={styles.categoryGoalLabel}>{cat.label}</Text>
+                  </View>
+                  
+                  {catGoals.weekly > 0 && (
+                    <GoalProgressBar 
+                      label="This Week" 
+                      current={weekMin} 
+                      goal={catGoals.weekly} 
+                      color={cat.color} 
+                    />
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
 
         {/* ── Stats Period Selector ── */}
         <View style={styles.statsTabs}>
@@ -1082,6 +1442,7 @@ export default function FocusScreen() {
             <CategoryBreakdown entries={entries} period="month" categories={categories} />
           </View>
         )}
+
 
         {/* ── Recent Entries ── */}
         <View style={styles.recentSection}>
@@ -1168,6 +1529,14 @@ export default function FocusScreen() {
           addReward(pts, Math.floor(pts / 2));
           setPendingFocusReward(null);
         }}
+      />
+
+      <GoalSettingModal
+        visible={showGoalsModal}
+        categories={categories}
+        goals={goals}
+        onSave={(newGoals) => { setGoals(newGoals); setShowGoalsModal(false); }}
+        onClose={() => setShowGoalsModal(false)}
       />
     </SafeAreaView>
   );
@@ -1642,5 +2011,89 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: 16,
+  },
+  goalCard: {
+    margin: 20,
+    marginTop: 10,
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  goalCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  goalCardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  goalEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  goalEditBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  categoryGoalRow: {
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  categoryGoalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  categoryGoalLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  promptCard: {
+    margin: 20,
+    marginTop: 10,
+    padding: 20,
+    backgroundColor: '#f5f3ff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#ddd6fe',
+    alignItems: 'center',
+    gap: 12,
+  },
+  promptTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#5b21b6',
+  },
+  promptText: {
+    fontSize: 13,
+    color: '#7c3aed',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  promptBtn: {
+    backgroundColor: '#8b5cf6',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  promptBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
   },
 });

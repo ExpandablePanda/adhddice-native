@@ -20,6 +20,7 @@ export function FocusProvider({ children }) {
   const { storagePrefix, user } = useProfile();
   const [entries, setEntries]       = useState([]);
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [goals, setGoals]           = useState({});
   const [timerState, setTimerState] = useState({ isRunning: false, category: 'work', secondsAtStart: 0, startTime: null });
   const [loaded, setLoaded]         = useState(false);
   const [isSyncing, setIsSyncing]   = useState(false);
@@ -38,6 +39,7 @@ export function FocusProvider({ children }) {
           isRemoteUpdateRef.current = true;
           if (event.data.entries) setEntries(event.data.entries.map(e => ({ ...e, date: new Date(e.date) })));
           if (event.data.categories) setCategories(event.data.categories);
+          if (event.data.goals) setGoals(event.data.goals);
           if (event.data.timerState) setTimerState(event.data.timerState);
         }
       };
@@ -52,6 +54,7 @@ export function FocusProvider({ children }) {
       
       const storedEntries = await AsyncStorage.getItem(`${storagePrefix}focus_entries`);
       const storedCats    = await AsyncStorage.getItem(`${storagePrefix}focus_cats`);
+      const storedGoals   = await AsyncStorage.getItem(`${storagePrefix}focus_goals`);
       const storedTimer   = await AsyncStorage.getItem(`${storagePrefix}timer_state`);
       
       if (storedEntries) {
@@ -59,6 +62,9 @@ export function FocusProvider({ children }) {
       }
       if (storedCats) {
         try { setCategories(JSON.parse(storedCats)); } catch(e) {}
+      }
+      if (storedGoals) {
+        try { setGoals(JSON.parse(storedGoals)); } catch(e) {}
       }
       if (storedTimer) {
         try { setTimerState(JSON.parse(storedTimer)); } catch(e) {}
@@ -72,6 +78,7 @@ export function FocusProvider({ children }) {
             const cloud = data.data;
             if (cloud.entries) setEntries(cloud.entries.map(e => ({ ...e, date: new Date(e.date) })));
             if (cloud.categories) setCategories(cloud.categories);
+            if (cloud.goals) setGoals(cloud.goals);
             if (cloud.timerState) setTimerState(cloud.timerState);
           }
         } catch (e) {
@@ -97,6 +104,7 @@ export function FocusProvider({ children }) {
             const cloud = payload.new.data;
             if (cloud.entries) setEntries(cloud.entries.map(e => ({ ...e, date: new Date(e.date) })));
             if (cloud.categories) setCategories(cloud.categories);
+            if (cloud.goals) setGoals(cloud.goals);
             if (cloud.timerState) setTimerState(cloud.timerState);
           }
         }
@@ -116,13 +124,14 @@ export function FocusProvider({ children }) {
     lastLocalChangeRef.current = Date.now();
 
     if (broadcastRef.current) {
-      broadcastRef.current.postMessage({ type: 'FOCUS_UPDATE', entries, categories, timerState, storagePrefix });
+      broadcastRef.current.postMessage({ type: 'FOCUS_UPDATE', entries, categories, goals, timerState, storagePrefix });
     }
 
     const saveData = async () => {
-      const focusData = { entries, categories, timerState };
+      const focusData = { entries, categories, goals, timerState };
       await AsyncStorage.setItem(`${storagePrefix}focus_entries`, JSON.stringify(entries));
       await AsyncStorage.setItem(`${storagePrefix}focus_cats`, JSON.stringify(categories));
+      await AsyncStorage.setItem(`${storagePrefix}focus_goals`, JSON.stringify(goals));
       await AsyncStorage.setItem(`${storagePrefix}timer_state`, JSON.stringify(timerState));
 
       setIsSyncing(true);
@@ -147,7 +156,7 @@ export function FocusProvider({ children }) {
       clearTimeout(timeoutId);
       if (Platform.OS === 'web') window.removeEventListener('pagehide', handleUnload);
     };
-  }, [entries, categories, timerState, loaded, user, storagePrefix]);
+  }, [entries, categories, goals, timerState, loaded, user, storagePrefix]);
 
   const addEntry = (entry) => {
     setEntries(prev => [entry, ...prev]);
@@ -167,6 +176,7 @@ export function FocusProvider({ children }) {
     <FocusContext.Provider value={{ 
       entries, setEntries, addEntry, deleteEntry, updateEntry,
       categories, setCategories,
+      goals, setGoals,
       timerState, setTimerState,
       isSyncing 
     }}>
