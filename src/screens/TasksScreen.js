@@ -66,6 +66,13 @@ function calcNextDueDate(task) {
   } else {
     base = task.dueDate ? new Date(task.dueDate) : new Date();
     if (isNaN(base.valueOf())) base = new Date();
+    
+    // If the due date is in the past, catch up to today
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    if (base < today) {
+      base = today;
+    }
   }
   if (task.frequency === 'Daily') {
     base.setDate(base.getDate() + 1);
@@ -1871,6 +1878,7 @@ export default function TasksScreen() {
     const unresolvedFromPriorDay = currentTasks.filter(t =>
       CONFIRM_STATUSES.includes(t.status) &&
       t.dueDate &&
+      !t.statusHistory?.[todayKey] && // Exempt if already handled today
       (() => {
         const [m, d, y] = t.dueDate.split('/');
         const dueDateKey = `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;

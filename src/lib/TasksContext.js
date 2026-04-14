@@ -26,6 +26,7 @@ export function calculateTaskMissedStreak(history = {}) {
     if (s === 'missed') {
       streak++;
     } else if (i === 0) {
+      if (s === 'done' || s === 'did_my_best') break; 
       continue; // today might not be recorded yet
     } else {
       break;

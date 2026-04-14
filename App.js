@@ -58,7 +58,7 @@ function RPGHeaderRight() {
   );
 }
 
-const APP_VERSION = 'V.02.06';
+const APP_VERSION = 'V.02.10';
 
 function LogoHeaderLeft() {
   return (
