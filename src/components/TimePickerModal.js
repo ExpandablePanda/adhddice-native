@@ -121,9 +121,9 @@ export default function TimePickerModal({ visible, onClose, onSelect, initialTim
   const isWeb = Platform.OS === 'web';
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
-      <View style={styles.overlay}>
-        <View style={[styles.modalCard, isWeb && { maxWidth: 400, alignSelf: 'center', width: '100%' }]}>
+    <Modal visible={visible} transparent animationType={isWeb ? 'fade' : 'slide'}>
+      <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
+        <View style={[styles.modalCard, isWeb && styles.modalCardWeb, isWeb && { maxWidth: 400, alignSelf: 'center', width: '100%' }]}>
           <Text style={styles.title}>Select Time</Text>
           
           {isWeb ? (
@@ -210,9 +210,13 @@ const webStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   overlay: {
-    flex: 1, 
-    justifyContent: 'flex-end', 
+    flex: 1,
+    justifyContent: 'flex-end',
     backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  overlayWeb: {
+    justifyContent: 'center',
+    padding: 20,
   },
   modalCard: {
     backgroundColor: '#fff',
@@ -225,6 +229,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 10,
     elevation: 10,
+  },
+  modalCardWeb: {
+    borderRadius: 24,
+    paddingBottom: 24,
   },
   title: {
     fontSize: 20,

@@ -127,11 +127,10 @@ export function FocusProvider({ children }) {
 
       setIsSyncing(true);
       try {
-        await supabase.from('user_focus').upsert({ 
-          user_id: user.id, 
-          data: focusData,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' });
+        const { error } = await supabase
+          .from('user_focus')
+          .upsert({ user_id: user.id, data: focusData, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+        if (error) throw error;
       } catch (e) {
         console.error('Focus cloud save failed', e);
       } finally {

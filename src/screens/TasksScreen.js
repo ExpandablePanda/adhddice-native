@@ -21,8 +21,8 @@ import ScrollToTop from '../components/ScrollToTop';
 const SCREEN_W = Dimensions.get('window').width;
 const CARD_GAP = 12;
 const CARD_PAD = 14;
-const numColumns  = Platform.OS === 'web' && SCREEN_W > 700 ? 3 : 2;
-const WEB_CARD_BASE = Platform.OS === 'web' ? Math.min(SCREEN_W, 600) : SCREEN_W;
+const numColumns  = Platform.OS === 'web' && SCREEN_W > 700 ? 5 : 2;
+const WEB_CARD_BASE = SCREEN_W;
 const CARD_W   = (WEB_CARD_BASE - CARD_PAD * 2 - CARD_GAP * (numColumns - 1)) / numColumns;
 const CARD_H   = CARD_W * 1.4;  // standard playing card ratio (5:7)
 

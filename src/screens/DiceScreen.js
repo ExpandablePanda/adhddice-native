@@ -173,8 +173,7 @@ function PrizeManagerModal({ visible, pools, onSave, onClose }) {
 
   function clearTab() {
     if (Platform.OS === 'web') {
-      const ok = window.confirm(`Clear ${activeTab} Prizes? Remove all prizes in this list?`);
-      if (ok) setDraft(d => ({ ...d, [activeTab]: [] }));
+      setDraft(d => ({ ...d, [activeTab]: [] }));
       return;
     }
     Alert.alert(`Clear ${activeTab} Prizes`, 'Remove all prizes in this list?', [
@@ -185,8 +184,7 @@ function PrizeManagerModal({ visible, pools, onSave, onClose }) {
 
   function resetDefaults() {
     if (Platform.OS === 'web') {
-      const ok = window.confirm('Reset to Defaults? Replace all global pools with defaults?');
-      if (ok) setDraft(JSON.parse(JSON.stringify(DEFAULT_POOLS)));
+      setDraft(JSON.parse(JSON.stringify(DEFAULT_POOLS)));
       return;
     }
     Alert.alert('Reset to Defaults', 'Replace all global pools with defaults?', [
@@ -999,9 +997,9 @@ const styles = StyleSheet.create({
   },
   ambientGlow: {
     position: 'absolute',
-    width: SCREEN_W * 0.6,
-    height: SCREEN_W * 0.6,
-    borderRadius: SCREEN_W * 0.3,
+    width: Platform.OS === 'web' ? Math.min(SCREEN_W * 0.6, 200) : SCREEN_W * 0.6,
+    height: Platform.OS === 'web' ? Math.min(SCREEN_W * 0.6, 200) : SCREEN_W * 0.6,
+    borderRadius: Platform.OS === 'web' ? Math.min(SCREEN_W * 0.3, 100) : SCREEN_W * 0.3,
     backgroundColor: colors.primary,
     opacity: 0.15,
   },
