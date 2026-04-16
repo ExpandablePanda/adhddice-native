@@ -21,7 +21,29 @@ const TasksContext = createContext();
 
 export function getLocalDateKey(date = new Date()) {
   const d = new Date(date);
-  return d.toISOString().split('T')[0];
+  const year = d.getFullYear();
+  const month = (d.getMonth() + 1).toString().padStart(2, '0');
+  const day = d.getDate().toString().padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Normalizes common date formats (MM/DD/YYYY or YYYY-MM-DD) to YYYY-MM-DD
+ * This ensures string comparisons (like dueDate <= todayKey) work reliably.
+ */
+export function normalizeDateKey(d) {
+  if (!d || typeof d !== 'string') return d;
+  if (d.includes('/')) {
+    const parts = d.split('/');
+    if (parts.length === 3) {
+      // Handle both M/D/YYYY and MM/DD/YYYY
+      const m = parts[0].padStart(2, '0');
+      const day = parts[1].padStart(2, '0');
+      const y = parts[2];
+      return `${y}-${m}-${day}`;
+    }
+  }
+  return d;
 }
 
 export function isSameDay(d1, d2) {
@@ -271,17 +293,18 @@ export function TasksProvider({ children }) {
       const nextTasks = tasks.map(t => {
         let newTask = { ...t };
         const hist = t.statusHistory || {};
+        const lowFreq = t.frequency?.toLowerCase() || '';
         
         // A. Catch missed tasks from yesterday
-        // If it was due yesterday (implied by having a frequency or a dueDate of yesterday) 
-        // and its history for yesterday is empty, we mark it missed.
-        // For simplicity: if it's currently not 'done' OR its status is 'missed' for today, 
-        // but yesterday was never marked.
         if (!hist[yesterdayKey]) {
-          // If task should have been active yesterday (e.g. daily frequency)
-          if (t.frequency === 'daily' || (t.dueDate && t.dueDate <= yesterdayKey)) {
-             hist[yesterdayKey] = 'missed';
-             newTask.statusHistory = hist;
+          const wasDaily = lowFreq === 'daily';
+          const normalizedDue = normalizeDateKey(t.dueDate);
+          const wasWeeklyToday = lowFreq === 'weekly' && (t.weeklyMode === 'fixed_day' || !t.weeklyMode) && t.weeklyDay === yesterday.getDay();
+          const wasDueYesterday = normalizedDue && normalizedDue <= yesterdayKey;
+
+          if (wasDaily || wasWeeklyToday || wasDueYesterday) {
+             const updatedHist = { ...hist, [yesterdayKey]: 'missed' };
+             newTask.statusHistory = updatedHist;
              changed = true;
           }
         }
@@ -289,9 +312,19 @@ export function TasksProvider({ children }) {
         // B. 6 AM (or dayStartTime) transition for today
         if (hour >= dayStartTime) {
           if (newTask.status === 'upcoming') {
-            // Check if it's due today
-            const isDueToday = !t.dueDate || t.dueDate <= todayKey;
-            if (isDueToday) {
+            const isDoneToday = hist[todayKey] === 'done' || hist[todayKey] === 'did_my_best';
+            
+            // Check if it's due today by schedule
+            const isDaily = lowFreq === 'daily';
+            const isWeeklyToday = lowFreq === 'weekly' && (t.weeklyMode === 'fixed_day' || !t.weeklyMode) && t.weeklyDay === now.getDay();
+            
+            const normalizedDue = normalizeDateKey(t.dueDate);
+            const isDueByDate = normalizedDue && normalizedDue <= todayKey;
+
+            // Only auto-activate if it matches a schedule OR an explicit due date
+            const isDueToday = isDaily || isWeeklyToday || isDueByDate;
+            
+            if (isDueToday && !isDoneToday) {
                newTask.status = 'pending';
                changed = true;
             }

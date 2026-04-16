@@ -22,6 +22,7 @@ export function FocusProvider({ children }) {
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [goals, setGoals]           = useState({});
   const [timerState, setTimerState] = useState({}); // Map: Record<categoryKey, { secondsAtStart: number, startTime: string | null }>
+  const [activeTimerKeys, setActiveTimerKeys] = useState(['work']); // Keys of timers visible on dashboard
   const [loaded, setLoaded]         = useState(false);
   const [isSyncing, setIsSyncing]   = useState(false);
   
@@ -40,7 +41,9 @@ export function FocusProvider({ children }) {
           if (event.data.entries) setEntries(event.data.entries.map(e => ({ ...e, date: new Date(e.date) })));
           if (event.data.categories) setCategories(event.data.categories);
           if (event.data.goals) setGoals(event.data.goals);
-          if (event.data.timerState) setTimerState(event.data.timerState);
+          if (event.data.timerState && typeof event.data.timerState === 'object') {
+            setTimerState(event.data.timerState);
+          }
         }
       };
     }
@@ -56,6 +59,7 @@ export function FocusProvider({ children }) {
       const storedCats    = await AsyncStorage.getItem(`${storagePrefix}focus_cats`);
       const storedGoals   = await AsyncStorage.getItem(`${storagePrefix}focus_goals`);
       const storedTimer   = await AsyncStorage.getItem(`${storagePrefix}timer_state`);
+      const storedVisKeys = await AsyncStorage.getItem(`${storagePrefix}active_timer_keys`);
       
       if (storedEntries) {
         try { setEntries(JSON.parse(storedEntries).map(e => ({ ...e, date: new Date(e.date) }))); } catch(e) {}
@@ -78,11 +82,19 @@ export function FocusProvider({ children }) {
                } 
              });
           } else if (parsed && typeof parsed === 'object') {
-             setTimerState(parsed); 
+             // Sanitize to remove any null values that could cause crashes
+             const sanitized = {};
+             Object.entries(parsed).forEach(([k, v]) => {
+               if (v && typeof v === 'object') sanitized[k] = v;
+             });
+             setTimerState(sanitized); 
           } else {
              setTimerState({});
           }
         } catch(e) {}
+      }
+      if (storedVisKeys) {
+        try { setActiveTimerKeys(JSON.parse(storedVisKeys)); } catch(e) {}
       }
 
       if (user) {
@@ -94,7 +106,14 @@ export function FocusProvider({ children }) {
             if (cloud.entries) setEntries(cloud.entries.map(e => ({ ...e, date: new Date(e.date) })));
             if (cloud.categories) setCategories(cloud.categories);
             if (cloud.goals) setGoals(cloud.goals);
-            if (cloud.timerState) setTimerState(cloud.timerState);
+            if (cloud.timerState && typeof cloud.timerState === 'object') {
+              const sanitized = {};
+              Object.entries(cloud.timerState).forEach(([k, v]) => {
+                if (v && typeof v === 'object') sanitized[k] = v;
+              });
+              setTimerState(sanitized);
+            }
+            if (cloud.activeTimerKeys) setActiveTimerKeys(cloud.activeTimerKeys);
           }
         } catch (e) {
           console.log('Focus sync skipped', e);
@@ -121,6 +140,7 @@ export function FocusProvider({ children }) {
             if (cloud.categories) setCategories(cloud.categories);
             if (cloud.goals) setGoals(cloud.goals);
             if (cloud.timerState) setTimerState(cloud.timerState);
+            if (cloud.activeTimerKeys) setActiveTimerKeys(cloud.activeTimerKeys);
           }
         }
       })
@@ -143,11 +163,12 @@ export function FocusProvider({ children }) {
     }
 
     const saveData = async () => {
-      const focusData = { entries, categories, goals, timerState };
+      const focusData = { entries, categories, goals, timerState, activeTimerKeys };
       await AsyncStorage.setItem(`${storagePrefix}focus_entries`, JSON.stringify(entries));
       await AsyncStorage.setItem(`${storagePrefix}focus_cats`, JSON.stringify(categories));
       await AsyncStorage.setItem(`${storagePrefix}focus_goals`, JSON.stringify(goals));
       await AsyncStorage.setItem(`${storagePrefix}timer_state`, JSON.stringify(timerState));
+      await AsyncStorage.setItem(`${storagePrefix}active_timer_keys`, JSON.stringify(activeTimerKeys));
 
       setIsSyncing(true);
       try {
@@ -223,6 +244,41 @@ export function FocusProvider({ children }) {
     });
   };
 
+  const addVisibleTimer = (key) => {
+    setActiveTimerKeys(prev => prev.includes(key) ? prev : [...prev, key]);
+  };
+
+  const removeVisibleTimer = (key) => {
+    setActiveTimerKeys(prev => prev.filter(k => k !== key));
+    resetTimer(key); // Automatically reset when removed from dashboard
+  };
+
+  const adjustTimer = (key, deltaSec) => {
+    setTimerState(prev => {
+      const current = prev[key] || { secondsAtStart: 0, startTime: null };
+      const newSeconds = Math.max(0, (current.secondsAtStart || 0) + deltaSec);
+      return {
+        ...prev,
+        [key]: {
+          ...current,
+          secondsAtStart: newSeconds
+        }
+      };
+    });
+  };
+
+  const reorderTimer = (key, direction) => {
+    setActiveTimerKeys(prev => {
+      const idx = prev.indexOf(key);
+      if (idx === -1) return prev;
+      const newIdx = idx + direction;
+      if (newIdx < 0 || newIdx >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[newIdx]] = [next[newIdx], next[idx]];
+      return next;
+    });
+  };
+
   if (!loaded) return null;
 
   return (
@@ -231,6 +287,9 @@ export function FocusProvider({ children }) {
       categories, setCategories,
       goals, setGoals,
       timerState, setTimerState,
+      activeTimerKeys,
+      addVisibleTimer, removeVisibleTimer, reorderTimer,
+      adjustTimer,
       startTimer, stopTimer, resetTimer,
       isSyncing 
     }}>

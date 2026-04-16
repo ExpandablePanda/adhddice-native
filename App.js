@@ -1,3 +1,5 @@
+import React from 'react';
+import { View, Text, TouchableOpacity, Platform, StyleSheet, Image } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -18,8 +20,6 @@ import { EconomyProvider, useEconomy } from './src/lib/EconomyContext';
 import { NotesProvider } from './src/lib/NotesContext';
 import { FocusProvider } from './src/lib/FocusContext';
 import { RoutinesProvider } from './src/lib/RoutinesContext';
-import React from 'react';
-import { View, Text, StyleSheet, Image, Platform } from 'react-native';
 
 import { ProfileProvider, useProfile } from './src/lib/ProfileContext';
 import { SettingsProvider } from './src/lib/SettingsContext';
@@ -121,16 +121,17 @@ function RPGHeaderRight() {
   );
 }
 
-const APP_VERSION = 'V.03.04';
+const APP_VERSION = 'V.03.06';
 
 function LogoHeaderLeft() {
+  const { colors } = useTheme();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
       <Image
         source={require('./assets/logo.png')}
         style={{ height: 64, width: 280, marginLeft: -80, marginTop: -10, backgroundColor: 'transparent', resizeMode: 'contain' }}
       />
-      <Text style={{ fontSize: 10, fontWeight: '700', color: '#9ca3af', marginLeft: -24, marginTop: 4 }}>{APP_VERSION}</Text>
+      <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textMuted, marginLeft: -45, marginTop: 4 }}>{APP_VERSION}</Text>
     </View>
   );
 }

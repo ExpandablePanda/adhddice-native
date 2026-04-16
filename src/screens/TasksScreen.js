@@ -90,7 +90,7 @@ function calcNextDueDate(task, dayStartTime = 6) {
   } else if (task.frequency === 'DaysAfter') {
     base.setDate(base.getDate() + (task.frequencyDays || 1));
   }
-  return `${String(base.getMonth() + 1).padStart(2, '0')}/${String(base.getDate()).padStart(2, '0')}/${base.getFullYear()}`;
+  return getLocalDateKey(base);
 }
 
 // ── Recursive subtask helpers ─────────────────────────────────────────────────
@@ -189,7 +189,10 @@ function groupByStatus(tasks) {
       const data = tasks.filter(t => {
         const h = t.statusHistory?.[todayKey];
         const isDoneToday = h === 'done' || h === 'did_my_best';
-        return t.status === s && !t.isPriority && !isDoneToday;
+        // Recurring tasks should not be hidden from active sections just because they were done today
+        // (because they move to 'upcoming' and we want to see them there)
+        const shouldHide = isDoneToday && !t.frequency;
+        return t.status === s && !t.isPriority && !shouldHide;
       });
       return { 
         title: STATUSES[s].label, 
@@ -204,6 +207,8 @@ function groupByStatus(tasks) {
   const doneData = tasks.filter(t => {
     const h = t.statusHistory?.[todayKey];
     const isDoneToday = h === 'done' || h === 'did_my_best';
+    // Recurring tasks that rolled over to 'upcoming' should NOT be in the 'Done' section
+    if (t.frequency && t.status === 'upcoming') return false;
     return t.status === 'done' || t.status === 'did_my_best' || isDoneToday;
   });
 
@@ -674,7 +679,7 @@ function TaskHistoryModal({ task, taskHistory = [], onClose, onUpdateHistory, on
 // LIST VIEW
 // ═════════════════════════════════════════════════════════════════════════════
 
-function TaskRow({ task, onConfirmStatus, onOpen, onHistory, onDeprioritize }) {
+function TaskRow({ task, onConfirmStatus, onOpen, onHistory, onDeprioritize, onViewNote }) {
   const [showStatusPicker, setShowStatusPicker] = useState(false);
   const [expanded, setExpanded] = useState(true);
   const [openSubPicker, setOpenSubPicker] = useState(null); // subtask id with picker open
@@ -745,10 +750,24 @@ function TaskRow({ task, onConfirmStatus, onOpen, onHistory, onDeprioritize }) {
             {(task.streak && task.streak > 0) ? <View style={[styles.metaChip, { backgroundColor: '#fee2e2' }]}><Ionicons name="flame" size={10} color="#ef4444" /><Text style={[styles.metaChipText, { color: '#ef4444' }]}>{task.streak}</Text></View> : null}
             {(() => { const ms = calculateTaskMissedStreak(task.statusHistory); return ms > 0 ? <View style={[styles.metaChip, { backgroundColor: '#1f2937' }]}><Text style={[styles.metaChipText, { color: '#f9fafb' }]}>💀 {ms}</Text></View> : null; })()}
             {linkedNotesCount > 0 && (
-              <View style={[styles.metaChip, { backgroundColor: '#fef3c7', borderColor: '#f59e0b', borderWidth: 0.5 }]}>
+              <TouchableOpacity 
+                style={[styles.metaChip, { backgroundColor: '#fef3c7', borderColor: '#f59e0b', borderWidth: 0.5 }]}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  const linkedNotes = notes.filter(n => String(n.taskId) === String(task.id));
+                  if (linkedNotes.length === 1) {
+                    onViewNote(linkedNotes[0]);
+                  } else {
+                    onOpen(task); // Go to edit window to choose from list
+                  }
+                }}
+              >
                 <Ionicons name="document-text-outline" size={10} color="#d97706" />
                 <Text style={[styles.metaChipText, { color: '#d97706' }]}>Notes ({linkedNotesCount})</Text>
-              </View>
+                <TouchableOpacity onPress={(e) => { e.stopPropagation(); const ln = notes.filter(n => String(n.taskId) === String(task.id)); onViewNote(ln[0], true); }} style={{ marginLeft: 4 }}>
+                  <Ionicons name="pencil" size={10} color="#d97706" />
+                </TouchableOpacity>
+              </TouchableOpacity>
             )}
             {(task.tags || []).map((tag, i) => <View key={i} style={[styles.metaChip, { backgroundColor: '#ede9fe' }]}><Text style={[styles.metaChipText, { color: '#6366f1' }]}>{tag}</Text></View>)}
           </View>
@@ -848,9 +867,12 @@ function SectionHeader({ title, status, count, collapsed, onToggle }) {
 // CARD VIEW
 // ═════════════════════════════════════════════════════════════════════════════
 
-function TaskCard({ task, onConfirmStatus, onOpen, onHistory, isFlipped, onFlipCard }) {
+function TaskCard({ task, onConfirmStatus, onOpen, onHistory, isFlipped, onFlipCard, onViewNote }) {
   const [stagedStatus, setStagedStatus] = useState(null);
   const flipAnim = useRef(new Animated.Value(isFlipped ? 1 : 0)).current;
+  const { notes } = useNotes();
+  const linkedNotes = (notes || []).filter(n => String(n.taskId) === String(task.id));
+  const linkedNotesCount = linkedNotes.length;
 
   useEffect(() => {
     Animated.spring(flipAnim, {
@@ -939,6 +961,25 @@ function TaskCard({ task, onConfirmStatus, onOpen, onHistory, isFlipped, onFlipC
           <Ionicons name="time-outline" size={9} color="#ffffff" />
           <Text style={[styles.cardChipText, { color: '#ffffff', fontWeight: '800' }]}>History</Text>
         </TouchableOpacity>
+        {linkedNotesCount > 0 && (
+          <TouchableOpacity 
+            style={[styles.cardChip, { backgroundColor: 'rgba(251,191,36,0.3)', borderColor: '#f59e0b', borderWidth: 0.5 }]}
+            onPress={(e) => {
+              e.stopPropagation();
+              if (linkedNotes.length === 1) {
+                onViewNote(linkedNotes[0]);
+              } else {
+                onOpen(task);
+              }
+            }}
+          >
+            <Ionicons name="document-text" size={9} color="#ffffff" />
+            <Text style={[styles.cardChipText, { color: '#ffffff', fontWeight: '800' }]}>{linkedNotesCount}</Text>
+            <TouchableOpacity onPress={(e) => { e.stopPropagation(); onViewNote(linkedNotes[0], true); }} style={{ marginLeft: 3 }}>
+              <Ionicons name="pencil" size={9} color="#ffffff" />
+            </TouchableOpacity>
+          </TouchableOpacity>
+        )}
         {energy && (
           <View style={[styles.cardChip, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
             <Text style={[styles.cardChipText, { color: '#ffffff', fontWeight: '600' }]}>{energy.label}</Text>
@@ -1082,7 +1123,7 @@ function SubtaskItem({ subtask, depth, onToggle, onDelete, onAddChild }) {
 // TASK DETAIL MODAL
 // ═════════════════════════════════════════════════════════════════════════════
 
-function TaskDetailModal({ task, onSave, onDelete, onClose }) {
+function TaskDetailModal({ task, onSave, onDelete, onClose, onViewNote }) {
   const { top } = useSafeAreaInsets();
   const { tasks: allTasks } = useTasks();
   const existingTags = Array.from(new Set(allTasks.flatMap(t => t.tags || []))).filter(Boolean);
@@ -1103,7 +1144,33 @@ function TaskDetailModal({ task, onSave, onDelete, onClose }) {
   const [showExistingTagMenu, setShowExistingTagMenu] = useState(false);
   const [showTitleSuggestions, setShowTitleSuggestions] = useState(false);
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+  const [showNotePicker, setShowNotePicker] = useState(false);
+  const [noteSearch, setNoteSearch] = useState('');
+  const { notes, updateNote, addNote } = useNotes();
   const isNew = !task.id;
+
+  // noteEditorState: null | { isNew: true, taskId: string } | { note: NoteObject }
+  const [noteEditorState, setNoteEditorState] = useState(null);
+
+  const handleCreateNote = () => {
+    setNoteEditorState({ isNew: true, taskId: draft.id });
+  };
+  
+  // Sync draft state with live task prop updates (e.g. from history edits)
+  React.useEffect(() => {
+    if (!isNew) {
+      setDraft(d => ({
+        ...d,
+        status: task.status,
+        dueDate: task.dueDate,
+        statusHistory: task.statusHistory,
+        subtasks: task.subtasks,
+        streak: task.streak,
+        completedAt: task.completedAt
+      }));
+    }
+  }, [task.status, task.dueDate, task.statusHistory, task.subtasks]);
+
   const titleSuggestions = React.useMemo(() => {
     const q = draft.title.trim().toLowerCase();
     if (q.length < 1) return [];
@@ -1443,6 +1510,90 @@ function TaskDetailModal({ task, onSave, onDelete, onClose }) {
               </View>
             )}
           </View>
+
+          {/* Linked Notes */}
+          {!isNew && (
+            <View style={{ marginTop: 12, marginBottom: 4 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <Text style={styles.fieldLabel}>Linked Notes</Text>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <TouchableOpacity onPress={handleCreateNote} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="add" size={14} color="#f59e0b" />
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#f59e0b', textTransform: 'uppercase' }}>New Note</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setShowNotePicker(!showNotePicker)}>
+                    <Ionicons name={showNotePicker ? "close-circle" : "link-outline"} size={20} color="#f59e0b" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              
+              {showNotePicker && (
+                <View style={[styles.taskPickerContainer, { backgroundColor: '#fffbeb', borderColor: '#fde68a', marginBottom: 12, marginTop: 4 }]}>
+                  <View style={styles.taskPickerSearch}>
+                    <Ionicons name="search" size={14} color="#9ca3af" />
+                    <TextInput
+                      style={[styles.taskSearchInput, { color: '#1f2937' }]}
+                      placeholder="Search notes to link..."
+                      placeholderTextColor="#9ca3af"
+                      value={noteSearch}
+                      onChangeText={setNoteSearch}
+                    />
+                  </View>
+                  <View style={{ maxHeight: 200 }}>
+                    <ScrollView nestedScrollEnabled={true}>
+                      {notes
+                        .filter(n => !n.taskId || String(n.taskId) !== String(draft.id))
+                        .filter(n => (n.title || n.content).toLowerCase().includes(noteSearch.toLowerCase()))
+                        .map(n => (
+                          <TouchableOpacity 
+                            key={n.id} 
+                            style={styles.taskResultItem}
+                            onPress={() => {
+                              updateNote(n.id, { taskId: draft.id });
+                              setNoteSearch('');
+                              setShowNotePicker(false);
+                            }}
+                          >
+                            <Ionicons name="document-text-outline" size={16} color="#d97706" />
+                            <Text style={[styles.taskResultText, { color: '#1f2937' }]} numberOfLines={1}>{n.title || n.content.slice(0, 30)}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      {notes.length === 0 && <Text style={styles.noResultsText}>No notes found.</Text>}
+                    </ScrollView>
+                  </View>
+                </View>
+              )}
+
+              <View style={{ gap: 6, marginBottom: 8 }}>
+                {notes.filter(n => String(n.taskId) === String(draft.id)).map(n => (
+                  <TouchableOpacity 
+                    key={n.id} 
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fef3c7', padding: 10, borderRadius: 12, borderWidth: 1, borderColor: '#fde68a' }}
+                    onPress={() => setNoteEditorState({ note: n })}
+                  >
+                    <Ionicons name="document-text" size={16} color="#d97706" />
+                    <Text style={{ flex: 1, fontSize: 13, color: '#92400e', fontWeight: '600' }} numberOfLines={1}>{n.title || 'Untitled Note'}</Text>
+                    <TouchableOpacity 
+                      onPress={(e) => { e.stopPropagation(); updateNote(n.id, { taskId: null }); }}
+                      style={{ padding: 4 }}
+                    >
+                      <Ionicons name="bag-remove" size={16} color="#ef4444" />
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* Localized Note Editor Overlay (Inside the modal stack for visibility) */}
+          {noteEditorState && (
+            <ViewNoteModal 
+              note={noteEditorState.note} 
+              isNew={noteEditorState.isNew}
+              taskId={noteEditorState.taskId}
+              onClose={() => setNoteEditorState(null)} 
+            />
+          )}
 
           {/* Subtasks */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16, marginBottom: 8 }}>
@@ -2138,107 +2289,8 @@ export default function TasksScreen() {
   const listRef = useRef(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [showCompleted, setShowCompleted] = useState(true);
-  const [confirmQueue, setConfirmQueue] = useState([]); // tasks needing midnight confirmation
   const [showTagMenu, setShowTagMenu] = useState(false);
-
-  // Midnight confirmation: surface pending/active/first_step tasks from prior days
-  const LAST_SESSION_KEY = 'adhddice_last_session_date';
-  const CONFIRM_STATUSES = ['pending', 'active', 'first_step'];
-
-  function checkMidnightConfirmation(currentTasks) {
-    const now = new Date();
-    // Use effective logic: if before dayStartTime, "today" for tasks is still yesterday
-    const effectiveNow = new Date(now);
-    if (now.getHours() < dayStartTime) {
-      effectiveNow.setDate(effectiveNow.getDate() - 1);
-    }
-    const todayKey = getLocalDateKey(effectiveNow);
-
-    const unresolvedFromPriorDay = currentTasks.filter(t =>
-      CONFIRM_STATUSES.includes(t.status) &&
-      t.dueDate &&
-      !t.statusHistory?.[todayKey] && // Exempt if already handled today
-      (() => {
-        const [m, d, y] = t.dueDate.split('/');
-        const dueDateKey = `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
-        return dueDateKey < todayKey;
-      })()
-    );
-    if (unresolvedFromPriorDay.length > 0) {
-      setConfirmQueue(unresolvedFromPriorDay);
-    }
-  }
-
-  useEffect(() => {
-    if (tasks.length > 0) {
-      checkMidnightConfirmation(tasks);
-    }
-    // Save today's date for next-session comparison
-    AsyncStorage.setItem(LAST_SESSION_KEY, getLocalDateKey());
-  }, []); // Run once on mount
-
-  // Re-check on visibility change (e.g. returning to tab after midnight)
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    function handleVisibility() {
-      if (document.visibilityState === 'visible') {
-        checkMidnightConfirmation(tasks);
-        AsyncStorage.setItem(LAST_SESSION_KEY, getLocalDateKey());
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [tasks]);
-
-  function handleMidnightConfirm(taskId, choice) {
-    // choice: 'done' | 'missed'
-    const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
-
-    if (choice === 'done') {
-      // Backdate completion to the previous "effective" day
-      const completionDate = new Date();
-      // If we are confirming something from "yesterday", we actually want to log it for its dueDate
-      // or just "yesterday" relative to the current effective day.
-      // But simpler: just log it for yesterday relative to NOW if it's currently morning.
-      completionDate.setDate(completionDate.getDate() - 1);
-      
-      const yesterdayKey = getLocalDateKey(completionDate);
-      const completedAt = completionDate.toISOString();
-      const updatedHistory = { ...(task.statusHistory || {}), [yesterdayKey]: 'done' };
-      // Save the backdated history first, then trigger the roll flow
-      setTasks(prev => prev.map(t => t.id === taskId ? {
-        ...t,
-        statusHistory: updatedHistory,
-        streak: calculateTaskStreak(updatedHistory),
-      } : t));
-      logTaskEvent({ ...task, completedAt }, 'done');
-      setConfirmQueue(prev => prev.filter(t => t.id !== taskId));
-      // Trigger roll flow — it will handle status/completedAt/reward
-      setTimeout(() => setCompletingTask({ ...task, statusHistory: updatedHistory, intent: 'done', _backdatedCompletedAt: completedAt }), 100);
-      return;
-    } else {
-      incrementMissedStreak();
-      const now = new Date();
-      // If it's 2am and I mark missed, I missed it for YESTERDAY
-      if (now.getHours() < dayStartTime) {
-        now.setDate(now.getDate() - 1);
-      }
-      const recordKey = getLocalDateKey(now);
-      const updatedHistory = { ...(task.statusHistory || {}), [recordKey]: 'missed' };
-      const nextDue = calcNextDueDate(task, dayStartTime);
-      setTasks(prev => prev.map(t => t.id === taskId ? {
-        ...t,
-        status: 'missed',
-        streak: calculateTaskStreak(updatedHistory),
-        statusHistory: updatedHistory,
-        ...(nextDue ? { dueDate: nextDue } : {}),
-      } : t));
-      logTaskEvent(task, 'missed');
-    }
-
-    setConfirmQueue(prev => prev.filter(t => t.id !== taskId));
-  }
+  const [viewingNote, setViewingNote] = useState(null);
 
   // Self-healing: Correct any mismatched streaks on load
   useEffect(() => {
@@ -2457,7 +2509,11 @@ export default function TasksScreen() {
     incrementActiveStreak();
 
     // History completions: just show the roll, don't change task status/dates
-    if (completingTask?._isHistoryCompletion) {
+    // EXCEPT if it's for today — then we want it to act like a normal completion
+    const isTodayHistory = completingTask?._isHistoryCompletion && 
+                           completingTask?._dateKey === getLocalDateKey();
+    
+    if (completingTask?._isHistoryCompletion && !isTodayHistory) {
       setCompletingTask(null);
       if (rewardQueue.length > 0) {
         const [next, ...rest] = rewardQueue;
@@ -2480,20 +2536,21 @@ export default function TasksScreen() {
     const today = getLocalDateKey();
 
     setTasks(prev => prev.map(t => {
-      // If completing the main task
-      if (!completingTask.parentTaskId && t.id === id) {
+      // Use loose equality (==) or cast to String to prevent numeric ID mismatches
+      if (!completingTask.parentTaskId && String(t.id) === String(id)) {
         let nextData = {};
         if (t.frequency) {
+          // Safety: ensure next data is calculated correctly for recurring rollovers
           const formatted = calcNextDueDate(t);
           nextData.dueDate = formatted;
           nextData.status = 'upcoming';
           nextData.gainedReward = null;
           nextData.completedAt = null;
-          // Reset subtasks for recurring momentum
           nextData.subtasks = mapSubtasks(t.subtasks || [], s => ({ ...s, status: 'upcoming' }));
         }
         // For recurring tasks nextData overrides status/gainedReward/completedAt; for one-off tasks use completion intent
-        const finalStatus = nextData.status || completingTask.intent;
+        const intent = completingTask.intent || completingTask.status || 'done';
+        const finalStatus = nextData.status || intent;
         const finalReward = nextData.status ? null : reward; // recurring tasks don't hold a reward
         // Use backdated timestamp if provided (e.g. midnight confirm "done")
         const finalCompletedAt = nextData.status ? null : (completingTask._backdatedCompletedAt || new Date().toISOString());
@@ -2501,7 +2558,7 @@ export default function TasksScreen() {
         const historyKey = completingTask._backdatedCompletedAt
           ? getLocalDateKey(new Date(completingTask._backdatedCompletedAt))
           : today;
-        const updatedHistory = { ...(t.statusHistory || {}), [historyKey]: completingTask.intent };
+        const updatedHistory = { ...(t.statusHistory || {}), [historyKey]: intent };
         const updated = {
           ...t,
           gainedReward: finalReward,
@@ -2511,7 +2568,7 @@ export default function TasksScreen() {
           statusHistory: updatedHistory,
           streak: calculateTaskStreak(updatedHistory),
         };
-        logTaskEvent(updated, completingTask.intent);
+        logTaskEvent(updated, intent);
         return updated;
       }
       
@@ -2549,7 +2606,7 @@ export default function TasksScreen() {
 
   function saveTask(draft, subtaskRolls = 0) {
     if (draft.id) {
-      const existing = tasks.find(t => t.id === draft.id);
+      const existing = tasks.find(t => String(t.id) === String(draft.id));
 
       // Moving out of done states -> Deduct
       if (existing && (existing.status === 'done' || existing.status === 'did_my_best') && (draft.status !== 'done' && draft.status !== 'did_my_best')) {
@@ -2563,15 +2620,15 @@ export default function TasksScreen() {
       // Moving into done states -> Trigger overlay
       if (existing && (existing.status !== 'done' && existing.status !== 'did_my_best') && (draft.status === 'done' || draft.status === 'did_my_best')) {
         // Save all changes EXCEPT status, then trigger completion modal
-        setTasks(prev => prev.map(t => t.id === draft.id ? { ...draft, status: existing.status } : t));
+        setTasks(prev => prev.map(t => String(t.id) === String(draft.id) ? { ...draft, status: existing.status } : t));
         setEditingTask(null);
-        setTimeout(() => setCompletingTask(draft), 100); // Slight delay for smooth transition
+        setTimeout(() => setCompletingTask({ ...draft, intent: draft.status }), 100); // Pass intent so rewards/history work
         return;
       }
     }
 
     setTasks(prev => draft.id
-      ? prev.map(t => t.id === draft.id ? draft : t)
+      ? prev.map(t => String(t.id) === String(draft.id) ? draft : t)
       : [...prev, { ...draft, id: String(nextTaskId++) }]
     );
     setEditingTask(null);
@@ -2591,7 +2648,7 @@ export default function TasksScreen() {
     }
   }
   function deleteTask(id) {
-    setTasks(prev => prev.filter(t => t.id !== id));
+    setTasks(prev => prev.filter(t => String(t.id) !== String(id)));
     setEditingTask(null);
   }
   function importTasks(payload, isJson = false) {
@@ -2909,33 +2966,6 @@ export default function TasksScreen() {
 
       <View style={styles.divider} />
 
-      {/* ── Midnight Confirmation Section ── */}
-      {confirmQueue.length > 0 && (
-        <View style={{ marginHorizontal: 16, marginBottom: 16, borderRadius: 14, backgroundColor: '#1e1b4b', overflow: 'hidden' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' }}>
-            <Ionicons name="moon" size={16} color="#a5b4fc" />
-            <Text style={{ color: '#a5b4fc', fontWeight: '800', fontSize: 13 }}>Check In — Did you do these yesterday?</Text>
-          </View>
-          {confirmQueue.map(t => (
-            <View key={t.id} style={{ flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' }}>
-              <Text style={{ flex: 1, color: '#e0e7ff', fontSize: 14, fontWeight: '600' }}>{t.title}</Text>
-              <TouchableOpacity
-                style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, backgroundColor: '#10b981', marginRight: 8 }}
-                onPress={() => handleMidnightConfirm(t.id, 'done')}
-              >
-                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>Done</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, backgroundColor: '#ef4444' }}
-                onPress={() => handleMidnightConfirm(t.id, 'missed')}
-              >
-                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>Missed</Text>
-              </TouchableOpacity>
-            </View>
-          ))}
-        </View>
-      )}
-
       {/* ── List view ── */}
       {view === 'list' && (
         filtered.length === 0
@@ -2954,7 +2984,7 @@ export default function TasksScreen() {
                     onToggle={(t) => setCollapsedSections(prev => ({ ...prev, [t]: !prev[t] }))}
                   />
                   {!collapsedSections[section.title] && section.data.map((item, i) => (
-                    <TaskRow key={String(item.id) + '-' + i} task={item} onConfirmStatus={confirmStatus} onOpen={setEditingTask} onHistory={t => setHistoryTask(t.id)} onDeprioritize={(id) => setTasks(prev => prev.map(t => t.id === id ? { ...t, isPriority: false } : t))} />
+                    <TaskRow key={String(item.id) + '-' + i} task={item} onConfirmStatus={confirmStatus} onOpen={setEditingTask} onHistory={t => setHistoryTask(t.id)} onDeprioritize={(id) => setTasks(prev => prev.map(t => t.id === id ? { ...t, isPriority: false } : t))} onViewNote={setViewingNote} />
                   ))}
                 </View>
               ))
@@ -2966,22 +2996,26 @@ export default function TasksScreen() {
           ? <Text style={styles.empty}>No tasks — tap New or import.</Text>
           : <View style={styles.cardGrid}>
               {filtered.map((item, i) => (
-                <TaskCard key={String(item.id) + '-' + i} task={item} onConfirmStatus={confirmStatus} onOpen={setEditingTask} onHistory={t => setHistoryTask(t.id)} isFlipped={flippedCards.has(item.id)} onFlipCard={flipCard} />
+                <TaskCard key={String(item.id) + '-' + i} task={item} onConfirmStatus={confirmStatus} onOpen={setEditingTask} onHistory={t => setHistoryTask(t.id)} isFlipped={flippedCards.has(item.id)} onFlipCard={flipCard} onViewNote={setViewingNote} />
               ))}
             </View>
       )}
 
       </ScrollView>
 
-      {/* Detail modal */}
-      {editingTask && (
-        <TaskDetailModal
-          task={editingTask}
-          onSave={saveTask}
-          onDelete={deleteTask}
-          onClose={() => setEditingTask(null)}
-        />
-      )}
+      {/* Detail modal — derive live task so it stays in sync with history edits */}
+      {editingTask && (() => {
+        const liveEditingTask = tasks.find(t => String(t.id) === String(editingTask.id)) || editingTask;
+        return (
+          <TaskDetailModal
+            task={liveEditingTask}
+            onSave={saveTask}
+            onDelete={deleteTask}
+            onClose={() => setEditingTask(null)}
+            onViewNote={(n, edit = false) => setViewingNote({ ...n, isInitialEdit: edit })}
+          />
+        );
+      })()}
 
       {/* Import modal */}
       <ImportModal visible={importVisible} onClose={() => setImportVisible(false)} onImport={importTasks} />
@@ -3028,13 +3062,14 @@ export default function TasksScreen() {
                   intent: 'done',
                   parentTaskId: null,
                   _isHistoryCompletion: true,
+                  _dateKey: getLocalDateKey(),
                 }));
                 setCompletingTask(items[0]);
                 if (items.length > 1) setRewardQueue(items.slice(1));
               }
             }}
             onUpdateHistory={(taskId, date, status) => {
-              const existingTask = tasks.find(t => t.id === taskId);
+              const existingTask = tasks.find(t => String(t.id) === String(taskId));
               const oldStatus = existingTask?.statusHistory?.[date];
               const wasCompleted = oldStatus === 'done' || oldStatus === 'did_my_best';
               const isNowCompleted = status === 'done' || status === 'did_my_best';
@@ -3044,16 +3079,53 @@ export default function TasksScreen() {
                 setHistoryNewCompletions(prev => Math.max(0, prev - 1));
               }
               setTasks(prev => prev.map(t => {
-                if (t.id !== taskId) return t;
+                if (String(t.id) !== String(taskId)) return t;
                 const h = { ...(t.statusHistory || {}) };
                 if (status === null) { delete h[date]; } else { h[date] = status; }
-                return { ...t, statusHistory: h };
+                const today = getLocalDateKey();
+                const isToday = date === today;
+                const isDone = status === 'done' || status === 'did_my_best';
+
+                let next = { 
+                  ...t, 
+                  statusHistory: h,
+                  streak: calculateTaskStreak(h)
+                };
+
+                if (isToday) {
+                  if (isDone && t.frequency) {
+                    // ATOMIC SYNC: Rollover immediately for today's history edits
+                    const nextDate = calcNextDueDate(t, dayStartTime);
+                    next.status = 'upcoming';
+                    next.dueDate = nextDate;
+                    next.completedAt = new Date().toISOString();
+                    if (t.subtasks && t.subtasks.length > 0) {
+                      const resetSubs = (list) => list.map(s => ({
+                        ...s,
+                        status: 'upcoming',
+                        subtasks: s.subtasks ? resetSubs(s.subtasks) : []
+                      }));
+                      next.subtasks = resetSubs(t.subtasks);
+                    }
+                  } else {
+                    next.status = status || 'pending';
+                  }
+                }
+                return next;
               }));
             }}
             onFillRange={(taskId, entries) => {
               setTasks(prev => prev.map(t => {
-                if (t.id !== taskId) return t;
-                return { ...t, statusHistory: { ...(t.statusHistory || {}), ...entries } };
+                if (String(t.id) !== String(taskId)) return t;
+                const newHistory = { ...(t.statusHistory || {}), ...entries };
+                const today = getLocalDateKey();
+                const todayUpdate = entries[today];
+                return { 
+                  ...t, 
+                  statusHistory: newHistory,
+                  streak: calculateTaskStreak(newHistory),
+                  ...(todayUpdate !== undefined ? { status: todayUpdate || 'pending' } : {})
+                };
               }));
             }}
           />
@@ -3061,6 +3133,8 @@ export default function TasksScreen() {
       })()}
 
       {showScrollTop && <ScrollToTop scrollRef={listRef} />}
+      
+      <ViewNoteModal note={viewingNote} onClose={() => setViewingNote(null)} />
     </SafeAreaView>
   );
 }
@@ -3239,6 +3313,94 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd6fe',
   },
-  fydDoneTitle: { color: '#5b21b6', fontSize: 15, fontWeight: '700' },
-  fydReset: { padding: 4 },
 });
+
+function ViewNoteModal({ note: initialNote, isNew, taskId, onClose }) {
+  const { colors } = useTheme();
+  const { updateNote, addNote } = useNotes();
+  const [isEditing, setIsEditing] = useState(isNew || initialNote?.isInitialEdit || false);
+  const [title, setTitle] = useState(initialNote?.title || '');
+  const [content, setContent] = useState(initialNote?.content || '');
+
+  React.useEffect(() => {
+    if (initialNote) {
+      setTitle(initialNote.title || '');
+      setContent(initialNote.content || '');
+      setIsEditing(initialNote.isInitialEdit || false);
+    } else if (isNew) {
+      setTitle('');
+      setContent('');
+      setIsEditing(true);
+    }
+  }, [initialNote, isNew]);
+
+  if (!initialNote && !isNew) return null;
+
+  const handleSave = () => {
+    if (isNew) {
+      addNote(title, content, [], taskId);
+    } else {
+      updateNote(initialNote.id, { title, content });
+    }
+    onClose();
+  };
+
+  return (
+    <View style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20, zIndex: 10000 }]}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        style={{ width: '100%', maxWidth: 500, alignItems: 'center' }}
+      >
+        <TouchableOpacity 
+          activeOpacity={1} 
+          style={{ width: '100%', backgroundColor: colors.background || '#fff', borderRadius: 24, padding: 24, maxHeight: '90%', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 30, elevation: 15 }}
+        >
+           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+             <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+               <Ionicons name="document-text" size={20} color="#f59e0b" />
+               {isEditing ? (
+                 <TextInput
+                   style={{ fontSize: 20, fontWeight: '800', color: colors.textPrimary || '#111827', flex: 1, padding: 0 }}
+                   value={title}
+                   onChangeText={setTitle}
+                   placeholder="Note Title"
+                   autoFocus
+                 />
+               ) : (
+                 <Text style={{ fontSize: 20, fontWeight: '800', color: colors.textPrimary || '#111827', flex: 1 }}>{initialNote?.title || 'Untitled Note'}</Text>
+               )}
+             </View>
+             <View style={{ flexDirection: 'row', gap: 12 }}>
+               {isEditing ? (
+                 <TouchableOpacity onPress={handleSave} style={{ backgroundColor: '#f59e0b', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 12 }}>
+                   <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Save</Text>
+                 </TouchableOpacity>
+               ) : (
+                 <TouchableOpacity onPress={() => setIsEditing(true)} style={{ padding: 4 }}>
+                   <Ionicons name="pencil" size={20} color={colors.textSecondary || '#6b7280'} />
+                 </TouchableOpacity>
+               )}
+               <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>
+                 <Ionicons name="close" size={24} color={colors.textSecondary || '#6b7280'} />
+               </TouchableOpacity>
+             </View>
+           </View>
+           <ScrollView showsVerticalScrollIndicator={true} contentContainerStyle={{ paddingBottom: 20 }}>
+             {isEditing ? (
+               <TextInput
+                 style={{ fontSize: 16, lineHeight: 24, color: colors.textSecondary || '#374151', minHeight: 200 }}
+                 value={content}
+                 onChangeText={setContent}
+                 placeholder="Start writing..."
+                 multiline
+                 textAlignVertical="top"
+               />
+             ) : (
+               <Text style={{ fontSize: 16, lineHeight: 24, color: colors.textSecondary || '#374151' }}>{initialNote?.content || 'No content.'}</Text>
+             )}
+           </ScrollView>
+        </TouchableOpacity>
+      </KeyboardAvoidingView>
+    </View>
+  );
+}

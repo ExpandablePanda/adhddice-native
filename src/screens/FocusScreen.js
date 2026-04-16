@@ -1087,6 +1087,9 @@ export default function FocusScreen() {
     categories, setCategories,
     goals, setGoals,
     timerState, setTimerState,
+    activeTimerKeys,
+    addVisibleTimer, removeVisibleTimer, reorderTimer,
+    adjustTimer,
     startTimer, stopTimer, resetTimer 
   } = useFocus();
   const { addReward } = useEconomy();
@@ -1098,6 +1101,11 @@ export default function FocusScreen() {
   const [showCatModal, setShowCatModal] = useState(false);
   const [showImport, setShowImport]     = useState(false);
   const [showGoalsModal, setShowGoalsModal] = useState(false);
+  const [showPicker, setShowPicker]     = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showReorder, setShowReorder]   = useState(false);
+  const [adjustingKey, setAdjustingKey] = useState(null);
+  const [pendingNote, setPendingNote]   = useState('');
   const [statsPeriod, setStatsPeriod]   = useState('week');
   const [pendingFocusReward, setPendingFocusReward] = useState(null); // { minutes, basePoints }
   const intervalRef = useRef(null);
@@ -1107,12 +1115,17 @@ export default function FocusScreen() {
   // Re-render every second to update all active timers
   const [, setTick] = useState(0);
   useEffect(() => {
-    const hasActive = Object.values(timerState).some(s => s.startTime);
+    const hasActive = Object.values(timerState).some(s => s?.startTime);
     if (!hasActive) return;
     
     const interval = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(interval);
   }, [timerState]);
+
+  const handleScroll = (event) => {
+    const y = event.nativeEvent.contentOffset.y;
+    setShowScrollTop(y > 300);
+  };
 
   const getElapsed = (catKey) => {
     const state = timerState[catKey];
@@ -1147,11 +1160,12 @@ export default function FocusScreen() {
       category,
       minutes,
       date: new Date(),
-      note: '',
+      note: pendingNote,
     };
     addEntry(newEntry);
     resetTimer(category);
     setPendingLog(null);
+    setPendingNote('');
 
     const basePoints = Math.max(1, Math.floor(minutes * 0.5));
     setPendingFocusReward({ minutes, basePoints });
@@ -1241,76 +1255,72 @@ export default function FocusScreen() {
             <Ionicons name="timer-outline" size={24} color={colors.primary} />
             <Text style={styles.headerTitle}>Focus Timer</Text>
           </View>
-          <TouchableOpacity onPress={() => setShowImport(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1.5, borderColor: colors.primary }}>
-            <Ionicons name="download-outline" size={15} color={colors.primary} />
-            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.primary }}>Import History</Text>
+          <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.settingsBtn}>
+            <Ionicons name="ellipsis-vertical" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
 
-        <View style={styles.timerSection}>
-          <Text style={[styles.fieldLabel, { marginBottom: 12, paddingHorizontal: 20 }]}>Categories</Text>
-          <View style={{ gap: 12, paddingHorizontal: 20 }}>
-            {categories.map(cat => {
-              const state = timerState[cat.key];
-              const isRunning = !!state?.startTime;
-              const elapsed = getElapsed(cat.key);
-              
-              return (
-                <View key={cat.key} style={[styles.catRow, { borderColor: isRunning ? cat.color : colors.border }]}>
-                  <View style={[styles.catIconWrap, { backgroundColor: cat.color + '15' }]}>
-                    <Ionicons name={cat.icon} size={20} color={cat.color} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.catLabel}>{cat.label}</Text>
-                    {elapsed > 0 && (
-                      <Text style={[styles.catElapsed, isRunning && { color: cat.color }]}>
-                        {fmtTimer(elapsed)}
-                      </Text>
-                    )}
-                  </View>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    {elapsed > 0 && (
-                      <TouchableOpacity 
-                        style={styles.resetTinyBtn} 
-                        onPress={() => {
-                          if (Platform.OS === 'web') {
-                            if (window.confirm('Discard this timer?')) resetTimer(cat.key);
-                          } else {
-                            Alert.alert('Reset', 'Discard this timer?', [
-                              { text: 'Cancel' },
-                              { text: 'Discard', style: 'destructive', onPress: () => resetTimer(cat.key) }
-                            ]);
-                          }
-                        }}
-                      >
-                        <Ionicons name="refresh" size={18} color="#9ca3af" />
-                      </TouchableOpacity>
-                    )}
-                    <TouchableOpacity 
-                      style={[styles.timerControlBtn, { backgroundColor: isRunning ? cat.color : colors.background, borderColor: isRunning ? cat.color : colors.border }]}
-                      onPress={() => handleTimerClick(cat)}
-                    >
-                      <Ionicons name={isRunning ? "pause" : "play"} size={20} color={isRunning ? "#fff" : cat.color} />
-                    </TouchableOpacity>
+        <View style={styles.dashboardSection}>
+          <Text style={styles.sectionTitle}>Dashboard</Text>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false} 
+            contentContainerStyle={styles.carouselContent}
+            snapToInterval={140}
+            decelerationRate="fast"
+          >
+            {activeTimerKeys.map(key => {
+              const cat = categories.find(c => c.key === key) || DEFAULT_CATEGORIES.find(c => c.key === key) || DEFAULT_CATEGORIES[6];
+              const state = timerState[key] || {};
+              const isRunning = !!state.startTime;
+              const elapsed = getElapsed(key);
 
+              return (
+                <View key={key} style={styles.clockWrapper}>
+                  <TouchableOpacity 
+                    style={[styles.clockCircle, { borderColor: isRunning ? cat.color : colors.border }]}
+                    onPress={() => handleTimerClick(cat)}
+                    onLongPress={() => setAdjustingKey(key)}
+                    delayLongPress={500}
+                  >
+                    <Ionicons name={cat.icon} size={24} color={isRunning ? cat.color : colors.textMuted} />
+                    <Text style={[styles.clockTimer, isRunning && { color: cat.color }]}>
+                      {fmtTimer(elapsed)}
+                    </Text>
+                    <View style={styles.clockLabelContainer}>
+                      <Text style={styles.clockLabel} numberOfLines={2}>{cat.label}</Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <View style={styles.clockControls}>
+                    <TouchableOpacity style={styles.smallControlBtn} onPress={() => resetTimer(key)}>
+                      <Ionicons name="refresh" size={14} color="#9ca3af" />
+                    </TouchableOpacity>
+                    
                     {elapsed >= 60 && !isRunning && (
                       <TouchableOpacity 
-                        style={[styles.logBtn, { backgroundColor: colors.primary }]}
-                        onPress={() => setPendingLog({ category: cat.key, seconds: elapsed })}
+                        style={[styles.smallControlBtn, { backgroundColor: colors.primary + '15' }]} 
+                        onPress={() => setPendingLog({ category: key, seconds: elapsed })}
                       >
-                        <Ionicons name="checkmark" size={20} color="#fff" />
+                        <Ionicons name="checkmark" size={14} color={colors.primary} />
                       </TouchableOpacity>
                     )}
+
+                    <TouchableOpacity style={styles.smallControlBtn} onPress={() => removeVisibleTimer(key)}>
+                      <Ionicons name="close-outline" size={16} color="#ef4444" />
+                    </TouchableOpacity>
                   </View>
                 </View>
               );
             })}
-          </View>
-          
-          <TouchableOpacity style={styles.editCatsBtn} onPress={() => setShowCatModal(true)}>
-            <Ionicons name="settings-outline" size={14} color="#6b7280" />
-            <Text style={{ fontSize: 13, color: '#6b7280', fontWeight: '600' }}>Manage Categories</Text>
-          </TouchableOpacity>
+
+            <TouchableOpacity style={styles.addClockBtn} onPress={() => setShowPicker(true)}>
+              <View style={styles.addClockCircle}>
+                <Ionicons name="add" size={32} color={colors.primary} />
+              </View>
+              <Text style={styles.addClockLabel}>Add Timer</Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
 
         {/* Log Confirmation Modal */}
@@ -1322,6 +1332,16 @@ export default function FocusScreen() {
                 <Text style={styles.confirmText}>
                   Log {fmtDuration(Math.floor(pendingLog.seconds / 60))} for {categories.find(c => c.key === pendingLog.category)?.label}?
                 </Text>
+                
+                <TextInput
+                  style={styles.confirmInput}
+                  placeholder="Add a note (optional)..."
+                  placeholderTextColor="#9ca3af"
+                  value={pendingNote}
+                  onChangeText={setPendingNote}
+                  autoFocus={false}
+                />
+
                 <View style={styles.confirmActions}>
                   <TouchableOpacity style={styles.confirmCancel} onPress={() => setPendingLog(null)}>
                     <Text style={styles.confirmCancelText}>Later</Text>
@@ -1498,17 +1518,147 @@ export default function FocusScreen() {
         categories={categories}
       />
 
-      {/* Edit modal */}
-      {editEntry && (
-        <EntryModal
-          visible={true}
-          entry={editEntry}
-          onSave={saveEntry}
-          onDelete={deleteEntry}
-          onClose={() => setEditEntry(null)}
-          categories={categories}
-        />
-      )}
+      {/* Settings menu */}
+      <Modal visible={showSettings} animationType="slide" transparent>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowSettings(false)}>
+          <View style={styles.settingsMenu}>
+            <View style={styles.menuHeader}>
+              <Text style={styles.menuTitle}>Focus Settings</Text>
+              <TouchableOpacity onPress={() => setShowSettings(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
+            </View>
+            
+            <TouchableOpacity 
+              style={styles.menuItem} 
+              onPress={() => { setShowSettings(false); setShowImport(true); }}
+            >
+              <Ionicons name="download-outline" size={22} color={colors.primary} />
+              <Text style={styles.menuItemText}>Import History</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.menuItem} 
+              onPress={() => { setShowSettings(false); setShowCatModal(true); }}
+            >
+              <Ionicons name="list-outline" size={22} color={colors.primary} />
+              <Text style={styles.menuItemText}>Manage Categories</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.menuItem} 
+              onPress={() => { setShowSettings(false); setShowReorder(true); }}
+            >
+              <Ionicons name="swap-horizontal-outline" size={22} color={colors.primary} />
+              <Text style={styles.menuItemText}>Reorder Dashboard</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.menuItem} 
+              onPress={() => { setShowSettings(false); setShowGoalsModal(true); }}
+            >
+              <Ionicons name="trophy-outline" size={22} color={colors.primary} />
+              <Text style={styles.menuItemText}>Set Focus Goals</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Adjust Time Modal */}
+      <Modal visible={!!adjustingKey} animationType="fade" transparent>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setAdjustingKey(null)}>
+          <View style={styles.adjustBox}>
+            <Text style={styles.adjustTitle}>Adjust Minutes</Text>
+            <View style={styles.adjustRow}>
+              {[-15, -5, -1, 1, 5, 15].map(m => (
+                <TouchableOpacity 
+                  key={m} 
+                  style={[styles.adjustBtn, { backgroundColor: m > 0 ? colors.primary + '15' : '#fee2e2' }]}
+                  onPress={() => adjustTimer(adjustingKey, m * 60)}
+                >
+                  <Text style={[styles.adjustBtnText, { color: m > 0 ? colors.primary : '#ef4444' }]}>{m > 0 ? '+' : ''}{m}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity style={styles.adjustClose} onPress={() => setAdjustingKey(null)}>
+              <Text style={styles.adjustCloseText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Reorder Modal */}
+      <Modal visible={showReorder} animationType="slide" transparent>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowReorder(false)}>
+          <View style={styles.reorderContent}>
+            <View style={styles.menuHeader}>
+              <Text style={styles.menuTitle}>Dashboard Order</Text>
+              <TouchableOpacity onPress={() => setShowReorder(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
+            </View>
+            
+            <View style={styles.reorderList}>
+              {activeTimerKeys.map((key, index) => {
+                const cat = categories.find(c => c.key === key) || DEFAULT_CATEGORIES.find(c => c.key === key) || DEFAULT_CATEGORIES[6];
+                return (
+                  <View key={key} style={styles.reorderItem}>
+                    <View style={[styles.reorderIcon, { backgroundColor: cat.color + '20' }]}>
+                      <Ionicons name={cat.icon} size={18} color={cat.color} />
+                    </View>
+                    <Text style={styles.reorderLabel}>{cat.label}</Text>
+                    <View style={styles.reorderActions}>
+                      {index > 0 && (
+                        <TouchableOpacity onPress={() => reorderTimer(key, -1)} style={styles.reorderBtn}>
+                          <Ionicons name="chevron-up" size={20} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                      )}
+                      {index < activeTimerKeys.length - 1 && (
+                        <TouchableOpacity onPress={() => reorderTimer(key, 1)} style={styles.reorderBtn}>
+                          <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+            
+            <TouchableOpacity style={styles.adjustClose} onPress={() => setShowReorder(false)}>
+              <Text style={styles.adjustCloseText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Picker modal */}
+      <Modal visible={showPicker} animationType="fade" transparent>
+        <TouchableOpacity 
+          style={styles.modalOverlay} 
+          activeOpacity={1} 
+          onPress={() => setShowPicker(false)}
+        >
+          <View style={styles.pickerContent}>
+            <Text style={styles.pickerTitle}>Select Category</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerGrid}>
+              {categories.map(cat => (
+                <TouchableOpacity 
+                  key={cat.key} 
+                  style={styles.pickerItem}
+                  onPress={() => {
+                    addVisibleTimer(cat.key);
+                    setShowPicker(false);
+                  }}
+                >
+                  <View style={[styles.pickerIcon, { backgroundColor: cat.color + '15' }]}>
+                    <Ionicons name={cat.icon} size={24} color={cat.color} />
+                  </View>
+                  <Text style={styles.pickerLabel}>{cat.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={styles.pickerClose} onPress={() => setShowPicker(false)}>
+              <Text style={styles.pickerCloseText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Cat Manager */}
       <CategoryManagerModal 
@@ -1563,8 +1713,8 @@ const styles = StyleSheet.create({
     paddingBottom: 60,
   },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: Platform.OS === 'ios' ? 12 : 20, paddingBottom: 8, marginBottom: 12 },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  headerTitle: { fontSize: 24, fontWeight: '800', color: '#111827' },
+  headerLeft: { flexDirection: 'row', alignItems: 'center' },
+  headerTitle: { fontSize: 24, fontWeight: '800', color: '#111827', marginLeft: 10 },
 
   // Section title
   sectionTitle: {
@@ -1576,105 +1726,328 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
 
-  // Timer
-  timerSection: {
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  catScroll: {
-    paddingLeft: 20,
-    marginBottom: 16,
-  },
-  catScrollContent: {
-    gap: 8,
-    paddingRight: 20,
-  },
-  timerCatChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: '#e5e7eb',
+  // Dashboard
+  dashboardSection: { marginBottom: 20 },
+  carouselContent: { paddingLeft: 20, paddingRight: 8, paddingBottom: 10 },
+  
+  clockWrapper: { alignItems: 'center', width: 110, marginRight: 16 },
+  clockCircle: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    borderWidth: 2,
     backgroundColor: '#fff',
-  },
-  timerCatText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  timerDisplay: {
-    alignSelf: 'center',
-    width: Platform.OS === 'web' ? Math.min(SCREEN_W * 0.55, 220) : SCREEN_W * 0.55,
-    height: Platform.OS === 'web' ? Math.min(SCREEN_W * 0.55, 220) : SCREEN_W * 0.55,
-    borderRadius: Platform.OS === 'web' ? Math.min(SCREEN_W * 0.275, 110) : SCREEN_W * 0.275,
-    borderWidth: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
-    backgroundColor: '#fafafa',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
   },
-  timerText: {
-    fontSize: 42,
+  clockTimer: {
+    fontSize: 16,
     fontWeight: '800',
+    color: colors.textPrimary,
+    marginTop: 4,
     fontVariant: ['tabular-nums'],
   },
-  timerPulse: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    opacity: 0.8,
-  },
-  timerControls: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 12,
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  catPicker: {
-    marginTop: 4,
-  },
-  timerBtn: {
-    flexDirection: 'row',
+  clockLabelContainer: {
+    height: 24,
+    width: '85%',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 24,
-    paddingVertical: 13,
-    borderRadius: 12,
+    justifyContent: 'center',
+    marginTop: 2,
   },
-  timerStart: {
-    backgroundColor: colors.primary,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
+  clockLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    lineHeight: 10,
+  },
+  clockControls: {
+    flexDirection: 'row',
+    marginTop: 8,
+  },
+  smallControlBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginRight: 2,
+  },
+
+  addClockBtn: {
+    width: 110,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addClockCircle: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fafafa',
+  },
+  addClockLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+    marginTop: 10,
+  },
+
+  // Picker Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pickerContent: {
+    width: '90%',
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  pickerTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  pickerGrid: {
+    paddingBottom: 10,
+  },
+  pickerItem: {
+    alignItems: 'center',
+    width: 80,
+    marginRight: 12,
+  },
+  pickerIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  pickerLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  pickerClose: {
+    marginTop: 20,
+    backgroundColor: '#f3f4f6',
+    padding: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  pickerCloseText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  
+  // Confirmation Modal
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmBox: {
+    width: '85%',
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
     elevation: 5,
   },
-  timerPause: {
-    backgroundColor: '#fff',
-    borderWidth: 1.5,
+  confirmTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginBottom: 8,
+  },
+  confirmText: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  confirmInput: {
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
     borderColor: '#e5e7eb',
-  },
-  timerStop: {
-    backgroundColor: '#fff',
-    borderWidth: 1.5,
-    borderColor: '#e5e7eb',
-  },
-  timerBtnText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  timerBtnTextSm: {
-    fontWeight: '600',
+    borderRadius: 10,
+    padding: 12,
     fontSize: 14,
+    color: colors.textPrimary,
+    marginBottom: 20,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  confirmCancel: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+  },
+  confirmCancelText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  confirmLog: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+  },
+  confirmLogText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  settingsBtn: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+  },
+  settingsMenu: {
+    width: '85%',
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+  },
+  menuHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  menuTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  menuItemText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginLeft: 12,
+  },
+  adjustBox: {
+    width: '85%',
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+  },
+  adjustTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginBottom: 20,
+  },
+  adjustRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  adjustBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  adjustBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  adjustClose: {
+    marginTop: 10,
+    width: '100%',
+    padding: 14,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  adjustCloseText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  
+  reorderContent: {
+    width: '90%',
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 24,
+  },
+  reorderList: {
+    marginBottom: 20,
+  },
+  reorderItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  reorderIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  reorderLabel: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  reorderActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  reorderBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
 
   // Add manual
@@ -1682,7 +2055,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
     marginHorizontal: 20,
     marginTop: 16,
     paddingVertical: 12,
@@ -1799,28 +2171,29 @@ const styles = StyleSheet.create({
 
   // Category breakdown
   breakdownList: {
-    gap: 10,
   },
   breakdownRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    marginBottom: 10,
   },
   breakdownIcon: {
     width: 32,
     height: 32,
-    borderRadius: 8,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 10,
   },
   breakdownInfo: {
     flex: 1,
-    gap: 4,
+    marginRight: 10,
   },
   breakdownTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 4,
   },
   breakdownLabel: {
     fontSize: 14,
@@ -1843,10 +2216,10 @@ const styles = StyleSheet.create({
     minWidth: 4,
   },
   breakdownPct: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     color: colors.textMuted,
-    width: 36,
+    width: 44,
     textAlign: 'right',
   },
 
@@ -1870,7 +2243,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    gap: 10,
   },
   entryCatIcon: {
     width: 36,
@@ -1878,15 +2250,16 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12,
   },
   entryInfo: {
     flex: 1,
-    gap: 2,
   },
   entryCategory: {
     fontSize: 15,
     fontWeight: '600',
     color: colors.textPrimary,
+    marginBottom: 2,
   },
   entryMeta: {
     fontSize: 12,
@@ -2081,7 +2454,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd6fe',
     alignItems: 'center',
-    gap: 12,
   },
   promptTitle: {
     fontSize: 16,

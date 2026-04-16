@@ -18,6 +18,7 @@ const { width: SCREEN_W } = Dimensions.get('window');
 
 function NoteCard({ note, onPress }) {
   const { colors } = useTheme();
+  const { tasks } = useTasks();
   
   // Basic multi-column logic: calculate a random height for masonry feel 
   // without needing a heavy library.
@@ -52,7 +53,7 @@ function NoteCard({ note, onPress }) {
         <View style={[styles.noteTaskChip, { backgroundColor: colors.primary + '15' }]}>
           <Ionicons name="link-outline" size={10} color={colors.primary} />
           <Text style={[styles.noteTaskText, { color: colors.primary }]} numberOfLines={1}>
-            {useTasks().tasks.find(t => t.id === note.taskId)?.title || 'Task'}
+            {tasks.find(t => t.id === note.taskId)?.title || 'Task'}
           </Text>
         </View>
       )}
@@ -266,6 +267,7 @@ function NoteEditorModal({ visible, note, onSave, onDelete, onConvert, onClose }
   const [tagInput, setTagInput] = useState('');
   const [taskId, setTaskId] = useState(null);
   const [showTaskPicker, setShowTaskPicker] = useState(false);
+  const [taskSearch, setTaskSearch] = useState('');
   const { tasks } = useTasks();
 
   React.useEffect(() => {
@@ -274,6 +276,8 @@ function NoteEditorModal({ visible, note, onSave, onDelete, onConvert, onClose }
       setContent(note?.content || '');
       setTags(note?.tags || []);
       setTaskId(note?.taskId || null);
+      setTaskSearch('');
+      setShowTaskPicker(false);
     }
   }, [visible, note]);
 
@@ -354,19 +358,44 @@ function NoteEditorModal({ visible, note, onSave, onDelete, onConvert, onClose }
             </TouchableOpacity>
             
             {showTaskPicker && (
-              <View style={[styles.taskPickerList, { backgroundColor: colors.surface }]}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ height: 40 }} contentContainerStyle={{ gap: 8 }}>
-                  {tasks.filter(t => t.status !== 'done' && t.status !== 'did_my_best').map(t => (
-                    <TouchableOpacity 
-                      key={t.id} 
-                      style={[styles.taskOptionChip, taskId === t.id && { backgroundColor: colors.primary }]}
-                      onPress={() => { setTaskId(t.id); setShowTaskPicker(false); }}
-                    >
-                      <Text style={[styles.taskOptionText, taskId === t.id && { color: '#fff' }]}>{t.title}</Text>
+              <View style={[styles.taskPickerContainer, { backgroundColor: colors.surface }]}>
+                <View style={styles.taskPickerSearch}>
+                  <Ionicons name="search" size={14} color="#9ca3af" />
+                  <TextInput
+                    style={[styles.taskSearchInput, { color: colors.textPrimary }]}
+                    placeholder="Search tasks..."
+                    placeholderTextColor="#9ca3af"
+                    value={taskSearch}
+                    onChangeText={setTaskSearch}
+                  />
+                  {taskSearch.length > 0 && (
+                    <TouchableOpacity onPress={() => setTaskSearch('')}>
+                      <Ionicons name="close-circle" size={14} color="#9ca3af" />
                     </TouchableOpacity>
-                  ))}
-                  {tasks.length === 0 && <Text style={{ color: '#9ca3af', fontSize: 12, paddingVertical: 10 }}>No active tasks to link.</Text>}
-                </ScrollView>
+                  )}
+                </View>
+                
+                <View style={[styles.taskResultsList, { maxHeight: 300 }]}>
+                  <ScrollView nestedScrollEnabled={true}>
+                    {tasks
+                      .filter(t => t.status !== 'done' && t.status !== 'did_my_best')
+                      .filter(t => t.title.toLowerCase().includes(taskSearch.toLowerCase()))
+                      .map(t => (
+                        <TouchableOpacity 
+                          key={t.id} 
+                          style={[styles.taskResultItem, taskId === t.id && { backgroundColor: colors.primary + '10' }]}
+                          onPress={() => { setTaskId(t.id); setShowTaskPicker(false); setTaskSearch(''); }}
+                        >
+                          <Ionicons name={taskId === t.id ? "checkmark-circle" : "ellipse-outline"} size={16} color={taskId === t.id ? colors.primary : '#d1d5db'} />
+                          <Text style={[styles.taskResultText, { color: colors.textPrimary }, taskId === t.id && { fontWeight: '700' }]}>{t.title}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    {tasks.length > 0 && tasks.filter(t => t.title.toLowerCase().includes(taskSearch.toLowerCase())).length === 0 && (
+                      <Text style={styles.noResultsText}>No matching tasks found.</Text>
+                    )}
+                    {tasks.length === 0 && <Text style={styles.noResultsText}>No active tasks to link.</Text>}
+                  </ScrollView>
+                </View>
               </View>
             )}
           </View>
@@ -513,8 +542,12 @@ const styles = StyleSheet.create({
   noteTaskText: { fontSize: 10, fontWeight: '600' },
   
   taskLinkBox: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1 },
-  taskPickerList: { marginTop: 10, borderRadius: 12, padding: 8, borderWidth: 1, borderColor: '#f3f4f6' },
-  taskOptionChip: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#f3f4f6', borderRadius: 20 },
-  taskOptionText: { fontSize: 12, color: '#4b5563', fontWeight: '500' },
+  taskPickerContainer: { marginTop: 10, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: '#f3f4f6', shadowColor: '#000', shadowOpacity: 0.02, shadowRadius: 10, elevation: 2 },
+  taskPickerSearch: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f9fafb', paddingHorizontal: 10, height: 36, borderRadius: 10, marginBottom: 12 },
+  taskSearchInput: { flex: 1, fontSize: 13 },
+  taskResultsList: { gap: 4 },
+  taskResultItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 4, borderRadius: 8 },
+  taskResultText: { fontSize: 14 },
+  noResultsText: { color: '#9ca3af', fontSize: 12, textAlign: 'center', paddingVertical: 8 },
   fieldLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
 });
