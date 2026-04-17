@@ -28,6 +28,10 @@
       "bundler": "metro",
       "baseUrl": "/ADHDice"
     },
+    "experiments": {
+      "baseUrl": "/ADHDice",
+      "typedRoutes": true
+    },
     "plugins": [
       "expo-secure-store"
     ]
