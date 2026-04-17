@@ -1,7 +1,7 @@
 {
   "name": "adhdice",
   "version": "3.4.1",
-  "homepage": "https://ExpandablePanda.github.io/adhddice-native",
+  "homepage": "https://ExpandablePanda.github.io/ADHDice",
   "main": "index.js",
   "scripts": {
     "start": "expo start",

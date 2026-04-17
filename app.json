@@ -27,7 +27,7 @@
       "favicon": "./assets/favicon.png",
       "bundler": "metro",
       "output": "static",
-      "baseUrl": "/adhddice-native"
+      "baseUrl": "/ADHDice"
     },
     "plugins": [
       "expo-secure-store"
