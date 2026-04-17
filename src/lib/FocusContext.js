@@ -158,6 +158,8 @@ export function FocusProvider({ children }) {
 
   // Track state in refs for immediate sync access without closure stale-ness
   const stateRef = useRef({ entries, categories, goals, timerState, activeTimerKeys });
+  const needsImmediateSyncRef = useRef(false);
+
   useEffect(() => {
     stateRef.current = { entries, categories, goals, timerState, activeTimerKeys };
   }, [entries, categories, goals, timerState, activeTimerKeys]);
@@ -211,7 +213,14 @@ export function FocusProvider({ children }) {
       return;
     }
     lastLocalChangeRef.current = Date.now();
-    triggerFocusSync(false); // Debounce by default
+    
+    // Check if any action requested an immediate sync (e.g., timer start/stop)
+    if (needsImmediateSyncRef.current) {
+      needsImmediateSyncRef.current = false;
+      triggerFocusSync(true);
+    } else {
+      triggerFocusSync(false); // Debounce by default (1.5s)
+    }
 
     const handleUnload = () => saveFocusData();
     if (Platform.OS === 'web') window.addEventListener('pagehide', handleUnload);
@@ -233,6 +242,7 @@ export function FocusProvider({ children }) {
   };
 
   const startTimer = (category) => {
+    needsImmediateSyncRef.current = true;
     setTimerState(prev => ({
       ...prev,
       [category]: {
@@ -241,7 +251,6 @@ export function FocusProvider({ children }) {
         secondsAtStart: prev[category]?.secondsAtStart || 0
       }
     }));
-    triggerFocusSync(true); // Immediate sync for start
   };
 
   const stopTimer = (category) => {
@@ -251,6 +260,7 @@ export function FocusProvider({ children }) {
     const elapsed = Math.floor((new Date() - new Date(state.startTime)) / 1000);
     const total = (state.secondsAtStart || 0) + elapsed;
     
+    needsImmediateSyncRef.current = true;
     setTimerState(prev => {
       const next = { ...prev };
       next[category] = {
@@ -260,17 +270,16 @@ export function FocusProvider({ children }) {
       };
       return next;
     });
-    triggerFocusSync(true); // Immediate sync for stop
     return total;
   };
 
   const resetTimer = (category) => {
+    needsImmediateSyncRef.current = true;
     setTimerState(prev => {
       const next = { ...prev };
       delete next[category];
       return next;
     });
-    triggerFocusSync(true); // Immediate sync for reset
   };
 
   const addVisibleTimer = (key) => {
@@ -283,6 +292,7 @@ export function FocusProvider({ children }) {
   };
 
   const adjustTimer = (key, deltaSec) => {
+    needsImmediateSyncRef.current = true;
     setTimerState(prev => {
       const current = prev[key] || { secondsAtStart: 0, startTime: null };
       const newSeconds = Math.max(0, (current.secondsAtStart || 0) + deltaSec);
@@ -294,7 +304,6 @@ export function FocusProvider({ children }) {
         }
       };
     });
-    triggerFocusSync(true); // Immediate sync for adjust
   };
 
   const reorderTimer = (key, direction) => {

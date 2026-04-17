@@ -261,6 +261,8 @@ export function TasksProvider({ children }) {
 
   // Track state in refs for immediate sync access
   const stateRef = useRef({ tasks, taskHistory, breakTimer });
+  const needsImmediateSyncRef = useRef(false);
+
   useEffect(() => {
     stateRef.current = { tasks, taskHistory, breakTimer };
   }, [tasks, taskHistory, breakTimer]);
@@ -330,7 +332,14 @@ export function TasksProvider({ children }) {
       return;
     }
     lastLocalChangeRef.current = Date.now();
-    triggerTasksSync(false); // Debounce by default
+    
+    // Check if any action requested an immediate sync (e.g., timer start/stop)
+    if (needsImmediateSyncRef.current) {
+      needsImmediateSyncRef.current = false;
+      triggerTasksSync(true);
+    } else {
+      triggerTasksSync(false); // Debounce by default (1.5s)
+    }
 
     const handleUnload = () => saveTasksData();
     if (Platform.OS === 'web') window.addEventListener('pagehide', handleUnload);
@@ -426,16 +435,17 @@ export function TasksProvider({ children }) {
   const startBreak = (minutes, prizeInfo = null) => {
     const seconds = Math.floor(minutes * 60);
     const endTime = Date.now() + (seconds * 1000);
+    needsImmediateSyncRef.current = true;
     setBreakTimer({ 
       remainingSeconds: seconds, 
       endTime: endTime,
       totalSeconds: seconds, 
       linkedPrize: prizeInfo 
     });
-    triggerTasksSync(true); // Immediate sync for start
   };
 
   const adjustBreakTime = (deltaSeconds) => {
+    needsImmediateSyncRef.current = true;
     setBreakTimer(prev => {
       if (!prev) return null;
       const newRemaining = Math.max(0, prev.remainingSeconds + deltaSeconds);
@@ -447,16 +457,15 @@ export function TasksProvider({ children }) {
         totalSeconds: Math.max(prev.totalSeconds, newRemaining) 
       };
     });
-    triggerTasksSync(true); // Immediate sync for adjust
   };
 
   const linkPrizeToBreak = (prizeInfo) => {
+    needsImmediateSyncRef.current = true;
     setBreakTimer(prev => {
       if (!prev) return null;
       // prizeInfo can be { name: string, count: number } or null
       return { ...prev, linkedPrize: prizeInfo };
     });
-    triggerTasksSync(true); // Immediate sync for link
   };
 
   // Removed global ticking to allow stable state for persistence.
@@ -465,11 +474,11 @@ export function TasksProvider({ children }) {
     if (breakTimer && breakTimer.endTime) {
       const now = Date.now();
       if (now >= breakTimer.endTime) {
+         needsImmediateSyncRef.current = true;
          setBreakTimer(null);
-         triggerTasksSync(true); // Immediate sync for auto-finish
       }
     }
-  }, [breakTimer?.endTime, triggerTasksSync]);
+  }, [breakTimer?.endTime]);
 
   if (!loaded) return null;
 
