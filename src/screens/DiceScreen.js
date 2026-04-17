@@ -1869,10 +1869,8 @@ const styles = StyleSheet.create({
     color: '#374151',
     textAlign: 'center',
     marginBottom: 4,
-    width: '100%', // Ensure it uses the padding of the parent
-  },
-    maxHeight: 38,
-    width: 120, // Constrain width to circle
+    width: '100%',
+    maxHeight: 40,
   },
   clockTime: {
     fontSize: 28,
