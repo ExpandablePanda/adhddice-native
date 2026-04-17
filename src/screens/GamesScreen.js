@@ -552,7 +552,7 @@ function WarGame({ onBack, tasks, colors }) {
   const { addReward } = useEconomy();
   const [completingWarTask, setCompletingWarTask] = useState(null);
 
-  const taskPool = tasks.filter(t => t.status === 'pending' || t.status === 'active' || t.status === 'first_step');
+  const taskPool = tasks.filter(t => t.status === 'pending' || t.status === 'active' || t.status === 'first_step' || t.status === 'missed');
   const [phase, setPhase] = useState('setup');
   const [setupCards, setSetupCards] = useState(() => taskPool.length >= 20 ? dealInitialCards(taskPool) : []);
   const [playerDeck, setPlayerDeck] = useState([]);

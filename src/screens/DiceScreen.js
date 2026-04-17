@@ -1031,17 +1031,27 @@ export default function DiceScreen() {
 
           {/* Adjustment Controls (Only if running) */}
           {breakTimer && (
-            <View style={styles.timerAdjustRow}>
-              {[-5, -1, 1, 5].map(m => (
-                <TouchableOpacity 
-                  key={m} 
-                  style={[styles.smallAdjustBtn, { backgroundColor: m > 0 ? colors.primary + '15' : '#fee2e2' }]} 
-                  onPress={() => adjustBreakTime(m * 60)}
-                >
-                  <Text style={[styles.adjustBtnText, { color: m > 0 ? colors.primary : '#ef4444' }]}>{m > 0 ? '+' : ''}{m}m</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <>
+              <View style={styles.timerAdjustRow}>
+                {[-5, -1, 1, 5].map(m => (
+                  <TouchableOpacity 
+                    key={m} 
+                    style={[styles.smallAdjustBtn, { backgroundColor: m > 0 ? colors.primary + '15' : '#fee2e2' }]} 
+                    onPress={() => adjustBreakTime(m * 60)}
+                  >
+                    <Text style={[styles.adjustBtnText, { color: m > 0 ? colors.primary : '#ef4444' }]}>{m > 0 ? '+' : ''}{m}m</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              
+              <TouchableOpacity 
+                style={styles.cancelBreakBtn} 
+                onPress={() => setBreakTimer(null)}
+              >
+                <Ionicons name="stop-circle-outline" size={16} color="#ef4444" />
+                <Text style={styles.cancelBreakText}>STOP TIMER</Text>
+              </TouchableOpacity>
+            </>
           )}
 
           {(breakTimer || pendingPrize) && (
@@ -1731,6 +1741,24 @@ const styles = StyleSheet.create({
   },
 
   // Reward Pool
+  cancelBreakBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#fee2e2',
+    marginTop: 12,
+  },
+  cancelBreakText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#ef4444',
+    letterSpacing: 1,
+  },
   poolSection: {
     marginHorizontal: 20,
     marginTop: 20,
