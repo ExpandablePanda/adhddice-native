@@ -259,73 +259,86 @@ export function TasksProvider({ children }) {
     return () => { supabase.removeChannel(channel); };
   }, [user]);
 
-  // 2. Save Data (Debounced)
+  // Track state in refs for immediate sync access
+  const stateRef = useRef({ tasks, taskHistory, breakTimer });
+  useEffect(() => {
+    stateRef.current = { tasks, taskHistory, breakTimer };
+  }, [tasks, taskHistory, breakTimer]);
+
+  const saveTasksData = useCallback(async () => {
+    if (!loaded) return;
+    const { tasks: t, taskHistory: th, breakTimer: bt } = stateRef.current;
+    
+    const timerToSave = bt ? { ...bt, lastUpdated: Date.now() } : null;
+
+    // Broadcast to other tabs immediately
+    if (broadcastRef.current) {
+      broadcastRef.current.postMessage({
+        type: 'TASKS_UPDATE',
+        tasks: t,
+        history: th,
+        breakTimer: timerToSave,
+        storagePrefix
+      });
+    }
+
+    // Always save locally
+    await AsyncStorage.setItem(`${storagePrefix}tasks`, JSON.stringify(t));
+    await AsyncStorage.setItem(`${storagePrefix}task_history`, JSON.stringify(th));
+    if (timerToSave) {
+      await AsyncStorage.setItem(`${storagePrefix}break_timer`, JSON.stringify(timerToSave));
+    } else {
+      await AsyncStorage.removeItem(`${storagePrefix}break_timer`);
+    }
+
+    // Push to cloud only when logged in
+    if (user) {
+      setIsSyncing(true);
+      try {
+        const { error } = await supabase
+          .from('user_tasks')
+          .upsert({
+            user_id: user.id,
+            data: { tasks: t, history: th, breakTimer: timerToSave },
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'user_id' });
+
+        if (error) throw error;
+      } catch (err) {
+        console.error('Tasks cloud save failed', err);
+      } finally {
+        setIsSyncing(false);
+      }
+    }
+  }, [loaded, user, storagePrefix]);
+
+  const syncTimeoutRef = useRef(null);
+  const triggerTasksSync = useCallback((immediate = false) => {
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    if (immediate) {
+      saveTasksData();
+    } else {
+      syncTimeoutRef.current = setTimeout(saveTasksData, 1500);
+    }
+  }, [saveTasksData]);
+
+  // 2. Save Data (Auto-debounced for general state changes)
   useEffect(() => {
     if (!loaded) return;
-
-    // If this update came from the cloud or broadcast, don't trigger a re-save
     if (isRemoteUpdateRef.current) {
       isRemoteUpdateRef.current = false;
       return;
     }
+    lastLocalChangeRef.current = Date.now();
+    triggerTasksSync(false); // Debounce by default
 
-    const saveData = async () => {
-      const dataToSave = tasks;
-      const historyToSave = taskHistory;
-      const timerToSave = breakTimer ? { ...breakTimer, lastUpdated: Date.now() } : null;
-
-      // Broadcast to other tabs immediately
-      if (broadcastRef.current) {
-        broadcastRef.current.postMessage({
-          type: 'TASKS_UPDATE',
-          tasks,
-          history: taskHistory,
-          breakTimer: timerToSave,
-          storagePrefix
-        });
-      }
-
-      // Always save locally
-      await AsyncStorage.setItem(`${storagePrefix}tasks`, JSON.stringify(dataToSave));
-      await AsyncStorage.setItem(`${storagePrefix}task_history`, JSON.stringify(historyToSave));
-      if (timerToSave) {
-        await AsyncStorage.setItem(`${storagePrefix}break_timer`, JSON.stringify(timerToSave));
-      } else {
-        await AsyncStorage.removeItem(`${storagePrefix}break_timer`);
-      }
-
-      // Push to cloud only when logged in
-      if (user) {
-        setIsSyncing(true);
-        try {
-          const { error } = await supabase
-            .from('user_tasks')
-            .upsert({
-              user_id: user.id,
-              data: { tasks: dataToSave, history: historyToSave, breakTimer: timerToSave },
-              updated_at: new Date().toISOString()
-            }, { onConflict: 'user_id' });
-
-          if (error) throw error;
-        } catch (e) {
-          console.error('Tasks cloud save failed', e);
-        } finally {
-          setIsSyncing(false);
-        }
-      }
-    };
-
-    const timeoutId = setTimeout(saveData, 1500); // 1.5s debounce for multi-device stability
-
-    // pagehide is BFCache-compatible (beforeunload disables BFCache in Safari)
-    const handleUnload = () => saveData();
+    const handleUnload = () => saveTasksData();
     if (Platform.OS === 'web') window.addEventListener('pagehide', handleUnload);
 
     return () => {
-      clearTimeout(timeoutId);
       if (Platform.OS === 'web') window.removeEventListener('pagehide', handleUnload);
     };
-  }, [tasks, taskHistory, breakTimer, loaded, user, storagePrefix]);
+  }, [tasks, taskHistory, breakTimer, loaded, user, storagePrefix, triggerTasksSync, saveTasksData]);
 
   // 3. Day-Start Transition Logic
   const { dayStartTime } = useSettings();
@@ -419,6 +432,7 @@ export function TasksProvider({ children }) {
       totalSeconds: seconds, 
       linkedPrize: prizeInfo 
     });
+    triggerTasksSync(true); // Immediate sync for start
   };
 
   const adjustBreakTime = (deltaSeconds) => {
@@ -433,6 +447,7 @@ export function TasksProvider({ children }) {
         totalSeconds: Math.max(prev.totalSeconds, newRemaining) 
       };
     });
+    triggerTasksSync(true); // Immediate sync for adjust
   };
 
   const linkPrizeToBreak = (prizeInfo) => {
@@ -441,6 +456,7 @@ export function TasksProvider({ children }) {
       // prizeInfo can be { name: string, count: number } or null
       return { ...prev, linkedPrize: prizeInfo };
     });
+    triggerTasksSync(true); // Immediate sync for link
   };
 
   // Removed global ticking to allow stable state for persistence.
@@ -450,9 +466,10 @@ export function TasksProvider({ children }) {
       const now = Date.now();
       if (now >= breakTimer.endTime) {
          setBreakTimer(null);
+         triggerTasksSync(true); // Immediate sync for auto-finish
       }
     }
-  }, [breakTimer?.endTime]);
+  }, [breakTimer?.endTime, triggerTasksSync]);
 
   if (!loaded) return null;
 

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --input-type=module --experimental-vm-modules)",
+      "Bash(npx react-native:*)",
+      "Bash(node -e ':*)",
+      "Bash(sed -i '' '368s|</SafeAreaView>|</ModalScreen>|' /Users/andrewmarkschaffer/adhddice-native/src/screens/FocusScreen.js)",
+      "Bash(sed -i '' '451s|</SafeAreaView>|</ModalScreen>|' /Users/andrewmarkschaffer/adhddice-native/src/screens/FocusScreen.js)",
+      "Bash(sed -i '' 's/<SafeAreaView style={styles\\\\.managerScreen}>/<ModalScreen style={styles.managerScreen}>/g' /Users/andrewmarkschaffer/adhddice-native/src/screens/DiceScreen.js)",
+      "Bash(sed -i '' '896s|</SafeAreaView>|</ModalScreen>|' /Users/andrewmarkschaffer/adhddice-native/src/screens/DiceScreen.js)",
+      "Bash(sed -i '' '947s|</SafeAreaView>|</ModalScreen>|' /Users/andrewmarkschaffer/adhddice-native/src/screens/DiceScreen.js)",
+      "Bash(wc -l /Users/andrewmarkschaffer/adhddice-native/src/screens/*.js)",
+      "Bash(grep -n \"beforeunload\\\\|pageshow\\\\|pagehide\" /Users/andrewmarkschaffer/adhddice-native/src/lib/*.js)",
+      "Bash(ls /Users/andrewmarkschaffer/adhddice-native/*.js)"
+    ]
+  }
+}

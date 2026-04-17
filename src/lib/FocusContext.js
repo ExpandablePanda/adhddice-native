@@ -113,11 +113,9 @@ export function FocusProvider({ children }) {
             if (cloud.categories) setCategories(cloud.categories);
             if (cloud.goals) setGoals(cloud.goals);
             if (cloud.timerState && typeof cloud.timerState === 'object') {
-              const sanitized = {};
-              Object.entries(cloud.timerState).forEach(([k, v]) => {
-                if (v && typeof v === 'object') sanitized[k] = v;
-              });
-              setTimerState(sanitized);
+              setTimerState(cloud.timerState);
+            } else if (cloud.timerState === null) {
+              setTimerState({});
             }
             if (cloud.activeTimerKeys) setActiveTimerKeys(cloud.activeTimerKeys);
           }
@@ -145,7 +143,11 @@ export function FocusProvider({ children }) {
             if (cloud.entries) setEntries(cloud.entries.map(e => ({ ...e, date: new Date(e.date) })));
             if (cloud.categories) setCategories(cloud.categories);
             if (cloud.goals) setGoals(cloud.goals);
-            if (cloud.timerState) setTimerState(cloud.timerState);
+            
+            if (cloud.timerState !== undefined) {
+              setTimerState(cloud.timerState || {});
+            }
+            
             if (cloud.activeTimerKeys) setActiveTimerKeys(cloud.activeTimerKeys);
           }
         }
@@ -154,51 +156,69 @@ export function FocusProvider({ children }) {
     return () => { supabase.removeChannel(channel); };
   }, [user]);
 
-  // 4. Save Data (Debounced)
+  // Track state in refs for immediate sync access without closure stale-ness
+  const stateRef = useRef({ entries, categories, goals, timerState, activeTimerKeys });
+  useEffect(() => {
+    stateRef.current = { entries, categories, goals, timerState, activeTimerKeys };
+  }, [entries, categories, goals, timerState, activeTimerKeys]);
+
+  const saveFocusData = useCallback(async () => {
+    if (!loaded || !user) return;
+    const { entries: e, categories: c, goals: g, timerState: ts, activeTimerKeys: atk } = stateRef.current;
+    
+    const focusData = { entries: e, categories: c, goals: g, timerState: ts, activeTimerKeys: atk };
+    
+    // Broadcast immediately (even if cloud fails)
+    if (broadcastRef.current) {
+      broadcastRef.current.postMessage({ type: 'FOCUS_UPDATE', ...focusData, storagePrefix });
+    }
+
+    // Save locally
+    await AsyncStorage.setItem(`${storagePrefix}focus_entries`, JSON.stringify(e));
+    await AsyncStorage.setItem(`${storagePrefix}focus_cats`, JSON.stringify(c));
+    await AsyncStorage.setItem(`${storagePrefix}focus_goals`, JSON.stringify(g));
+    await AsyncStorage.setItem(`${storagePrefix}timer_state`, JSON.stringify(ts));
+    await AsyncStorage.setItem(`${storagePrefix}active_timer_keys`, JSON.stringify(atk));
+
+    setIsSyncing(true);
+    try {
+      const { error } = await supabase
+        .from('user_focus')
+        .upsert({ user_id: user.id, data: focusData, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+      if (error) throw error;
+    } catch (err) {
+      console.error('Focus cloud save failed', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [loaded, user, storagePrefix]);
+
+  const syncTimeoutRef = useRef(null);
+  const triggerFocusSync = useCallback((immediate = false) => {
+    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+    if (immediate) {
+      saveFocusData();
+    } else {
+      syncTimeoutRef.current = setTimeout(saveFocusData, 1500);
+    }
+  }, [saveFocusData]);
+
+  // 4. Save Data (Auto-debounced for general state changes)
   useEffect(() => {
     if (!loaded || !user) return;
     if (isRemoteUpdateRef.current) {
       isRemoteUpdateRef.current = false;
       return;
     }
-
     lastLocalChangeRef.current = Date.now();
+    triggerFocusSync(false); // Debounce by default
 
-    if (broadcastRef.current) {
-      broadcastRef.current.postMessage({ type: 'FOCUS_UPDATE', entries, categories, goals, timerState, storagePrefix });
-    }
-
-    const saveData = async () => {
-      const focusData = { entries, categories, goals, timerState, activeTimerKeys };
-      await AsyncStorage.setItem(`${storagePrefix}focus_entries`, JSON.stringify(entries));
-      await AsyncStorage.setItem(`${storagePrefix}focus_cats`, JSON.stringify(categories));
-      await AsyncStorage.setItem(`${storagePrefix}focus_goals`, JSON.stringify(goals));
-      await AsyncStorage.setItem(`${storagePrefix}timer_state`, JSON.stringify(timerState));
-      await AsyncStorage.setItem(`${storagePrefix}active_timer_keys`, JSON.stringify(activeTimerKeys));
-
-      setIsSyncing(true);
-      try {
-        const { error } = await supabase
-          .from('user_focus')
-          .upsert({ user_id: user.id, data: focusData, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-        if (error) throw error;
-      } catch (e) {
-        console.error('Focus cloud save failed', e);
-      } finally {
-        setIsSyncing(false);
-      }
-    };
-
-    const timeoutId = setTimeout(saveData, 1500);
-    // pagehide is BFCache-compatible (beforeunload disables BFCache in Safari)
-    const handleUnload = () => saveData();
+    const handleUnload = () => saveFocusData();
     if (Platform.OS === 'web') window.addEventListener('pagehide', handleUnload);
-
     return () => {
-      clearTimeout(timeoutId);
       if (Platform.OS === 'web') window.removeEventListener('pagehide', handleUnload);
     };
-  }, [entries, categories, goals, timerState, loaded, user, storagePrefix]);
+  }, [entries, categories, goals, timerState, activeTimerKeys, loaded, user, storagePrefix, triggerFocusSync, saveFocusData]);
 
   const addEntry = (entry) => {
     setEntries(prev => [entry, ...prev]);
@@ -221,6 +241,7 @@ export function FocusProvider({ children }) {
         secondsAtStart: prev[category]?.secondsAtStart || 0
       }
     }));
+    triggerFocusSync(true); // Immediate sync for start
   };
 
   const stopTimer = (category) => {
@@ -239,6 +260,7 @@ export function FocusProvider({ children }) {
       };
       return next;
     });
+    triggerFocusSync(true); // Immediate sync for stop
     return total;
   };
 
@@ -248,6 +270,7 @@ export function FocusProvider({ children }) {
       delete next[category];
       return next;
     });
+    triggerFocusSync(true); // Immediate sync for reset
   };
 
   const addVisibleTimer = (key) => {
@@ -271,6 +294,7 @@ export function FocusProvider({ children }) {
         }
       };
     });
+    triggerFocusSync(true); // Immediate sync for adjust
   };
 
   const reorderTimer = (key, direction) => {
