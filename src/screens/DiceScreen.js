@@ -734,24 +734,37 @@ export default function DiceScreen() {
   const totalUnclaimed = poolEntries.reduce((acc, [, count]) => acc + count, 0);
 
   function handleManualShuffle() {
-    Alert.alert(
-      'Reshuffle Board',
-      'Would you like to manually randomize the entire custom D20 Board? This costs 200 Points.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Shuffle (200 pts)', 
-          onPress: () => {
-             const success = spendPoints(200);
-             if (success) {
-               setDailyBoard({ date: new Date().toDateString(), map: generateDailyPool(pools) });
-             } else {
-               Alert.alert('Not Enough Points', 'You need 200 points to forcefully reshuffle the board.');
-             }
-          }
+    const msg = 'Would you like to manually randomize the entire custom D20 Board? This costs 200 Points.';
+    
+    const performShuffle = () => {
+      const success = spendPoints(200);
+      if (success) {
+        const newBoard = { date: new Date().toDateString(), map: generateDailyPool(pools) };
+        setDailyBoard(newBoard);
+        // Sync to other tabs
+        if (broadcastChannelRef.current) {
+          broadcastChannelRef.current.postMessage({ type: 'BOARD_SYNC', board: newBoard });
         }
-      ]
-    );
+      } else {
+        if (Platform.OS === 'web') window.alert('Not Enough Points: You need 200 points to forcefully reshuffle the board.');
+        else Alert.alert('Not Enough Points', 'You need 200 points to forcefully reshuffle the board.');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(msg)) {
+        performShuffle();
+      }
+    } else {
+      Alert.alert(
+        'Reshuffle Board',
+        msg,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Shuffle (200 pts)', onPress: performShuffle }
+        ]
+      );
+    }
   }
 
   const renderGridBoard = (isModal = false) => {
@@ -1270,26 +1283,28 @@ export default function DiceScreen() {
                   );
                 })
               )}
-
-              {modalSelection && (
-                <TouchableOpacity 
-                  style={[styles.rollAgainBtn, { marginTop: 24 }]} 
-                  onPress={() => {
-                    if (breakTimer) {
-                      linkPrizeToBreak(modalSelection);
-                    } else {
-                      setPendingPrize(modalSelection);
-                    }
-                    setShowPrizeLinker(false);
-                  }}
-                >
-                  <Ionicons name="link-outline" size={18} color="#fff" />
-                  <Text style={styles.rollAgainText}>
-                    Link {modalSelection.count > 1 ? `${modalSelection.count}x ` : ''}Selection
-                  </Text>
-                </TouchableOpacity>
-              )}
           </ScrollView>
+
+          {modalSelection && (
+            <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.card }}>
+              <TouchableOpacity 
+                style={[styles.rollAgainBtn, { marginTop: 0 }]} 
+                onPress={() => {
+                  if (breakTimer) {
+                    linkPrizeToBreak(modalSelection);
+                  } else {
+                    setPendingPrize(modalSelection);
+                  }
+                  setShowPrizeLinker(false);
+                }}
+              >
+                <Ionicons name="link-outline" size={18} color="#fff" />
+                <Text style={styles.rollAgainText}>
+                  Link {modalSelection.count > 1 ? `${modalSelection.count}x ` : ''}Selection
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </ModalScreen>
       </Modal>
 

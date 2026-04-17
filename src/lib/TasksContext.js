@@ -155,12 +155,16 @@ export function TasksProvider({ children }) {
         if (storedBreak) {
           try {
             const parsed = JSON.parse(storedBreak);
-            if (parsed && parsed.remainingSeconds > 0 && parsed.lastUpdated) {
-              const elapsed = Math.floor((Date.now() - parsed.lastUpdated) / 1000);
-              const remaining = Math.max(0, parsed.remainingSeconds - elapsed);
+            if (parsed && parsed.endTime) {
+              const remaining = Math.max(0, Math.floor((parsed.endTime - Date.now()) / 1000));
               if (remaining > 0) {
                 setBreakTimer({ ...parsed, remainingSeconds: remaining });
+              } else {
+                setBreakTimer(null);
               }
+            } else if (parsed && parsed.remainingSeconds > 0) {
+              // Legacy fallback
+              setBreakTimer(parsed);
             }
           } catch (e) {}
         }
@@ -190,11 +194,12 @@ export function TasksProvider({ children }) {
               if (cloud.history) setTaskHistory(cloud.history.filter(Boolean));
               
               // Handle break timer from cloud
-              if (cloud.breakTimer && cloud.breakTimer.remainingSeconds > 0 && cloud.breakTimer.lastUpdated) {
-                const elapsed = Math.floor((Date.now() - cloud.breakTimer.lastUpdated) / 1000);
-                const remaining = Math.max(0, cloud.breakTimer.remainingSeconds - elapsed);
+              if (cloud.breakTimer && cloud.breakTimer.endTime) {
+                const remaining = Math.max(0, Math.floor((cloud.breakTimer.endTime - Date.now()) / 1000));
                 if (remaining > 0) {
                   setBreakTimer({ ...cloud.breakTimer, remainingSeconds: remaining });
+                } else {
+                  setBreakTimer(null);
                 }
               }
             }
@@ -231,11 +236,13 @@ export function TasksProvider({ children }) {
               if (payload.new.data.history) setTaskHistory(payload.new.data.history.filter(Boolean));
               
               const remoteTimer = payload.new.data.breakTimer;
-              if (remoteTimer && remoteTimer.remainingSeconds > 0 && remoteTimer.lastUpdated) {
-                const elapsed = Math.floor((Date.now() - remoteTimer.lastUpdated) / 1000);
-                const remaining = Math.max(0, remoteTimer.remainingSeconds - elapsed);
-                if (remaining > 0) setBreakTimer({ ...remoteTimer, remainingSeconds: remaining });
-                else setBreakTimer(null);
+              if (remoteTimer && remoteTimer.endTime) {
+                const remaining = Math.max(0, Math.floor((remoteTimer.endTime - Date.now()) / 1000));
+                if (remaining > 0) {
+                  setBreakTimer({ ...remoteTimer, remainingSeconds: remaining });
+                } else {
+                  setBreakTimer(null);
+                }
               }
             }
           }
@@ -399,8 +406,13 @@ export function TasksProvider({ children }) {
 
   const startBreak = (minutes, prizeInfo = null) => {
     const seconds = Math.floor(minutes * 60);
-    // prizeInfo should be { name: string, count: number }
-    setBreakTimer({ remainingSeconds: seconds, totalSeconds: seconds, linkedPrize: prizeInfo });
+    const endTime = Date.now() + (seconds * 1000);
+    setBreakTimer({ 
+      remainingSeconds: seconds, 
+      endTime: endTime,
+      totalSeconds: seconds, 
+      linkedPrize: prizeInfo 
+    });
   };
 
   const adjustBreakTime = (deltaSeconds) => {
@@ -411,6 +423,7 @@ export function TasksProvider({ children }) {
       return { 
         ...prev, 
         remainingSeconds: newRemaining, 
+        endTime: Date.now() + (newRemaining * 1000),
         totalSeconds: Math.max(prev.totalSeconds, newRemaining) 
       };
     });
@@ -426,19 +439,24 @@ export function TasksProvider({ children }) {
 
   useEffect(() => {
     let interval;
-    if (breakTimer && breakTimer.remainingSeconds > 0) {
+    if (breakTimer && breakTimer.endTime) {
       interval = setInterval(() => {
+        const remaining = Math.max(0, Math.floor((breakTimer.endTime - Date.now()) / 1000));
+        
+        if (remaining <= 0) {
+          setBreakTimer(null);
+          clearInterval(interval);
+          return;
+        }
+
         setBreakTimer(prev => {
-          if (!prev || prev.remainingSeconds <= 1) {
-            clearInterval(interval);
-            return null;
-          }
-          return { ...prev, remainingSeconds: prev.remainingSeconds - 1 };
+          if (!prev) return null;
+          return { ...prev, remainingSeconds: remaining };
         });
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [breakTimer === null]); // only re-run effect when timer starts/stops
+  }, [breakTimer?.endTime]);
 
   if (!loaded) return null;
 
