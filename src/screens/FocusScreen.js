@@ -19,13 +19,14 @@ const SCREEN_W = Dimensions.get('window').width;
 
 // ── Default categories ───────────────────────────────────────────────────────
 const DEFAULT_CATEGORIES = [
-  { key: 'work',     label: 'Work',      color: '#4f46e5', icon: 'briefcase-outline' },
-  { key: 'study',    label: 'Study',     color: '#0891b2', icon: 'book-outline' },
-  { key: 'creative', label: 'Creative',  color: '#7c3aed', icon: 'color-palette-outline' },
-  { key: 'exercise', label: 'Exercise',  color: '#059669', icon: 'fitness-outline' },
-  { key: 'chores',   label: 'Chores',    color: '#d97706', icon: 'home-outline' },
-  { key: 'personal', label: 'Personal',  color: '#ec4899', icon: 'person-outline' },
-  { key: 'other',    label: 'Other',     color: '#6b7280', icon: 'ellipsis-horizontal-outline' },
+  { key: 'work',        label: 'Work',      color: '#4f46e5', icon: 'briefcase-outline', nature: 'productive' },
+  { key: 'study',       label: 'Study',     color: '#0891b2', icon: 'book-outline',      nature: 'productive' },
+  { key: 'creative',    label: 'Creative',  color: '#7c3aed', icon: 'color-palette-outline', nature: 'productive' },
+  { key: 'exercise',    label: 'Exercise',  color: '#059669', icon: 'fitness-outline',    nature: 'productive' },
+  { key: 'chores',      label: 'Chores',    color: '#d97706', icon: 'home-outline',       nature: 'productive' },
+  { key: 'personal',    label: 'Personal',  color: '#ec4899', icon: 'person-outline',     nature: 'entertainment' },
+  { key: 'sleep',       label: 'Sleep',     color: '#3b82f6', icon: 'moon-outline',       nature: 'sleep' },
+  { key: 'other',       label: 'Other',     color: '#6b7280', icon: 'ellipsis-horizontal-outline', nature: 'entertainment' },
 ];
 
 // ── Time formatting ──────────────────────────────────────────────────────────
@@ -176,11 +177,12 @@ const goalStyles = StyleSheet.create({
 // CATEGORY BREAKDOWN
 // ═════════════════════════════════════════════════════════════════════════════
 
-function CategoryBreakdown({ entries, period, categories = DEFAULT_CATEGORIES, goals = {} }) {
+function CategoryBreakdown({ entries, period, categories = DEFAULT_CATEGORIES, goals = {}, specificDate = null }) {
   const cats = categories;
   const now = new Date();
 
   const filtered = entries.filter(e => {
+    if (specificDate && period === 'day') return isSameDay(e.date, specificDate);
     if (period === 'today') return isSameDay(e.date, now);
     if (period === 'week') return e.date >= getWeekStart(now);
     if (period === 'month') return e.date >= getMonthStart(now);
@@ -194,7 +196,7 @@ function CategoryBreakdown({ entries, period, categories = DEFAULT_CATEGORIES, g
 
   const sorted = cats
     .map(c => ({ ...c, minutes: totals[c.key] || 0 }))
-    .filter(c => period === 'today' ? true : c.minutes > 0)
+    .filter(c => (period === 'today' || period === 'day') ? true : c.minutes > 0)
     .sort((a, b) => {
       if (b.minutes !== a.minutes) return b.minutes - a.minutes;
       return a.label.localeCompare(b.label);
@@ -209,17 +211,20 @@ function CategoryBreakdown({ entries, period, categories = DEFAULT_CATEGORIES, g
   return (
     <View style={styles.breakdownList}>
       {sorted.map(cat => {
-        // Calculate goal display for today
         const catGoals = goals[cat.key];
         let displayGoal = 0;
-        if (period === 'today' && catGoals) {
-          displayGoal = catGoals.daily > 0 ? catGoals.daily : (catGoals.weekly > 0 ? Math.round(catGoals.weekly / 7) : 0);
+        let pct = 0;
+        
+        if (period === 'today' || period === 'week' || period === 'day') {
+          if (period === 'today' || period === 'day') {
+            displayGoal = catGoals?.daily || (catGoals?.weekly > 0 ? Math.round(catGoals.weekly / 7) : 0);
+          } else {
+            displayGoal = catGoals?.weekly || 0;
+          }
+          pct = displayGoal > 0 ? Math.min((cat.minutes / displayGoal) * 100, 100) : (totalMins > 0 ? (cat.minutes / totalMins) * 100 : 0);
+        } else {
+          pct = totalMins > 0 ? (cat.minutes / totalMins) * 100 : 0;
         }
-
-        // Percentage is relative to goal if goal exists, otherwise relative to total
-        const pct = displayGoal > 0 
-           ? Math.min((cat.minutes / displayGoal) * 100, 100)
-           : (totalMins > 0 ? (cat.minutes / totalMins) * 100 : 0);
 
         return (
           <View key={cat.key} style={styles.breakdownRow}>
@@ -676,19 +681,27 @@ function CategoryManagerModal({ visible, categories, onClose, onSave }) {
                 </View>
 
                 <View style={{ paddingLeft: 34, marginTop: 12 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>Mark as Productive Time</Text>
-                    <TouchableOpacity 
-                      onPress={() => updateCat(idx, 'isProductive', !cat.isProductive)}
-                      style={{ 
-                        width: 40, height: 22, borderRadius: 11, 
-                        backgroundColor: cat.isProductive ? colors.primary : '#e5e7eb',
-                        padding: 2,
-                        flexDirection: cat.isProductive ? 'row-reverse' : 'row'
-                      }}
-                    >
-                      <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff' }} />
-                    </TouchableOpacity>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 }}>Focus Type</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                    {[
+                      { key: 'productive', label: 'Productive', icon: 'flash', color: '#10b981' },
+                      { key: 'paid', label: 'Paid', icon: 'cash', color: '#3b82f6' },
+                      { key: 'entertainment', label: 'Entertainment', icon: 'tv', color: '#ef4444' },
+                      { key: 'sleep', label: 'Sleep', icon: 'moon', color: '#7c3aed' },
+                    ].map(t => (
+                      <TouchableOpacity
+                        key={t.key}
+                        onPress={() => updateCat(idx, 'nature', t.key)}
+                        style={{
+                          paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8,
+                          backgroundColor: cat.nature === t.key ? t.color : '#f3f4f6',
+                          flexDirection: 'row', alignItems: 'center', gap: 4
+                        }}
+                      >
+                        <Ionicons name={t.icon} size={10} color={cat.nature === t.key ? '#fff' : t.color} />
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: cat.nature === t.key ? '#fff' : '#6b7280' }}>{t.label}</Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
                   
                   <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 }}>Category Color</Text>
@@ -1257,16 +1270,46 @@ export default function FocusScreen() {
 
   // ── Productivity stats calculation ──────────────────────────────────────
   const getTimeSummary = (periodEntries) => {
-    const total = periodEntries.reduce((acc, e) => acc + e.minutes, 0);
-    const productive = periodEntries.reduce((acc, e) => {
-      const cat = categories.find(c => c.key === e.category);
-      return acc + (cat?.isProductive ? e.minutes : 0);
-    }, 0);
+    // Group minutes by nature
+    const sorted = { productive: 0, paid: 0, entertainment: 0, sleep: 0 };
+    
+    // For today/day stats, we can track sleep overflow
+    // but getTimeSummary is often called for ranges too.
+    // Let's implement a "date-aware" summary for precise sleep logic.
+    
+    // 1. Group by day to apply sleep cap
+    const dayMap = {};
+    periodEntries.forEach(e => {
+      const dKey = fmtDate(e.date);
+      if (!dayMap[dKey]) dayMap[dKey] = { productive: 0, paid: 0, entertainment: 0, sleep: 0 };
+      const cat = categories.find(c => c.key === e.category) || DEFAULT_CATEGORIES[7];
+      const nature = cat.nature || (cat.isProductive ? 'productive' : 'entertainment');
+      dayMap[dKey][nature] += e.minutes;
+    });
+
+    let totalEffProductive = 0;
+    let totalEffWaste = 0;
+
+    Object.values(dayMap).forEach(day => {
+      const cappedSleep = Math.min(day.sleep, 480); // 8h
+      const overflowSleep = Math.max(0, day.sleep - 480);
+      
+      totalEffProductive += day.productive + day.paid + cappedSleep;
+      totalEffWaste += day.entertainment + overflowSleep;
+      
+      sorted.productive += day.productive;
+      sorted.paid += day.paid;
+      sorted.entertainment += day.entertainment;
+      sorted.sleep += day.sleep;
+    });
+
+    const total = totalEffProductive + totalEffWaste;
     return {
       total,
-      productive,
-      nonProductive: total - productive,
-      pct: total > 0 ? Math.round((productive / total) * 100) : 0
+      productive: sorted.productive + sorted.paid,
+      entertainment: sorted.entertainment,
+      sleep: sorted.sleep,
+      score: total > 0 ? Math.round((totalEffProductive / total) * 100) : 0
     };
   };
 
@@ -1394,30 +1437,82 @@ export default function FocusScreen() {
           <Text style={styles.addManualText}>Add Time Manually</Text>
         </TouchableOpacity>
 
-        {/* ── Today Summary ── */}
-        <View style={styles.todayCard}>
-          <View style={styles.todayTop}>
-            <View>
-              <Text style={styles.todayLabel}>Today</Text>
-              <Text style={styles.todayTotal}>{fmtDuration(todayTotal)}</Text>
-            </View>
-            <View style={styles.todaySummaryBreakdown}>
-              <View style={styles.todaySummaryItem}>
-                <View style={[styles.summaryDot, { backgroundColor: '#10b981' }]} />
-                <Text style={styles.summaryText}>Productive: {fmtDuration(todayStats.productive)}</Text>
-              </View>
-              <View style={styles.todaySummaryItem}>
-                <View style={[styles.summaryDot, { backgroundColor: '#ef4444' }]} />
-                <Text style={styles.summaryText}>Other: {fmtDuration(todayStats.nonProductive)}</Text>
-              </View>
-            </View>
+        {/* ── Daily History Gallery ── */}
+        <View style={styles.galleryContainer}>
+          <View style={styles.galleryHeader}>
+            <Text style={styles.sectionTitle}>Daily History</Text>
+            <TouchableOpacity 
+              style={styles.jumpBtn}
+              onPress={() => setShowPicker(true)}
+            >
+              <Ionicons name="calendar-outline" size={16} color={colors.primary} />
+              <Text style={styles.jumpBtnText}>Jump to Date</Text>
+            </TouchableOpacity>
           </View>
-          <CategoryBreakdown 
-            entries={entries} 
-            period="today" 
-            categories={categories} 
-            goals={goals} 
-          />
+          
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.galleryList}
+            snapToInterval={SCREEN_WIDTH - 40}
+            decelerationRate="fast"
+            inverted // Show most recent first (right to left) or just start at end?
+            // Actually, natural order (left to right) is better but start at the end (Today).
+            ref={ref => {
+              if (ref && !this._galleryScrolled) {
+                // Initialize scroll to end (Today)
+                setTimeout(() => ref.scrollToEnd({ animated: false }), 100);
+                this._galleryScrolled = true;
+              }
+            }}
+          >
+            {Array.from({ length: 30 }, (_, i) => {
+              const date = new Date();
+              date.setDate(date.getDate() - (29 - i));
+              date.setHours(0,0,0,0);
+              const dayEntries = entries.filter(e => isSameDay(e.date, date));
+              const stats = getTimeSummary(dayEntries);
+              const isToday = isSameDay(date, new Date());
+
+              return (
+                <View key={i} style={styles.historyCard}>
+                  <View style={styles.todayTop}>
+                    <View>
+                      <Text style={styles.todayLabel}>{isToday ? 'Today' : fmtDate(date)}</Text>
+                      <Text style={styles.todayTotal}>{fmtDuration(stats.total)}</Text>
+                    </View>
+                    <View style={styles.todaySummaryBreakdown}>
+                      <View style={styles.todaySummaryItem}>
+                        <View style={[styles.summaryDot, { backgroundColor: '#10b981' }]} />
+                        <Text style={styles.summaryText}>Focus: {fmtDuration(stats.productive)}</Text>
+                      </View>
+                      <View style={styles.todaySummaryItem}>
+                        <View style={[styles.summaryDot, { backgroundColor: '#7c3aed' }]} />
+                        <Text style={styles.summaryText}>Sleep: {fmtDuration(stats.sleep)}</Text>
+                      </View>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.scoreRow}>
+                    <View style={styles.scoreCircle}>
+                      <Text style={styles.scoreVal}>{stats.score}%</Text>
+                      <Text style={styles.scoreLabel}>Efficiency</Text>
+                    </View>
+                    <View style={{ flex: 1, paddingLeft: 15 }}>
+                       <CategoryBreakdown 
+                        entries={entries} 
+                        period="day" 
+                        specificDate={date}
+                        categories={categories} 
+                        goals={goals} 
+                      />
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
         </View>
 
         {/* ── Goals & Progress Tracking ── */}
@@ -2669,4 +2764,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
+  // History Gallery
+  galleryContainer: { marginVertical: 20 },
+  galleryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 12 },
+  jumpBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '10', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, gap: 4 },
+  jumpBtnText: { fontSize: 12, fontWeight: '700', color: colors.primary },
+  galleryList: { paddingHorizontal: 10 },
+  historyCard: { width: SCREEN_WIDTH - 40, backgroundColor: '#fff', borderRadius: 24, padding: 20, marginHorizontal: 10, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 15, elevation: 3, borderWidth: 1, borderColor: '#f3f4f6' },
+  scoreRow: { flexDirection: 'row', alignItems: 'center', marginTop: 15, borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 15 },
+  scoreCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.primary + '10', alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#fff', shadowColor: colors.primary, shadowOpacity: 0.1, shadowRadius: 10 },
+  scoreVal: { fontSize: 20, fontWeight: '800', color: colors.primary },
+  scoreLabel: { fontSize: 8, fontWeight: '800', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
 });

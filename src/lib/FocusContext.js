@@ -7,19 +7,20 @@ import { supabase } from './supabase';
 const FocusContext = createContext();
 
 const DEFAULT_CATEGORIES = [
-  { key: 'work',        label: 'Work',          color: '#4f46e5', icon: 'briefcase-outline', isProductive: true },
-  { key: 'lamprey',     label: 'Lamprey (Work)',color: '#4338ca', icon: 'flash-outline',     isProductive: true },
-  { key: 'study',       label: 'Study',         color: '#0891b2', icon: 'book-outline',      isProductive: true },
-  { key: 'learning',    label: 'Learning',      color: '#0e7490', icon: 'school-outline',    isProductive: true },
-  { key: 'creative',    label: 'Creative',      color: '#7c3aed', icon: 'color-palette-outline', isProductive: true },
-  { key: 'exercise',    label: 'Exercise',      color: '#059669', icon: 'fitness-outline',    isProductive: true },
-  { key: 'chores',      label: 'Chores',        color: '#d97706', icon: 'home-outline',       isProductive: true },
-  { key: 'tcg',         label: 'TCG (Social)',  color: '#be185d', icon: 'people-outline',    isProductive: false },
-  { key: 'music',       label: 'Music (Ent.)',  color: '#db2777', icon: 'musical-notes-outline', isProductive: false },
-  { key: 'entertainment',label: 'Entertainment', color: '#c026d3', icon: 'tv-outline',        isProductive: false },
-  { key: 'social',      label: 'Social',        color: '#e11d48', icon: 'chatbubble-outline', isProductive: false },
-  { key: 'personal',    label: 'Personal',      color: '#ec4899', icon: 'person-outline',     isProductive: false },
-  { key: 'other',       label: 'Other',         color: '#6b7280', icon: 'ellipsis-horizontal-outline', isProductive: false },
+  { key: 'work',        label: 'Work',          color: '#4f46e5', icon: 'briefcase-outline', nature: 'productive' },
+  { key: 'lamprey',     label: 'Lamprey (Work)',color: '#4338ca', icon: 'flash-outline',     nature: 'productive' },
+  { key: 'study',       label: 'Study',         color: '#0891b2', icon: 'book-outline',      nature: 'productive' },
+  { key: 'learning',    label: 'Learning',      color: '#0e7490', icon: 'school-outline',    nature: 'productive' },
+  { key: 'creative',    label: 'Creative',      color: '#7c3aed', icon: 'color-palette-outline', nature: 'productive' },
+  { key: 'exercise',    label: 'Exercise',      color: '#059669', icon: 'fitness-outline',    nature: 'productive' },
+  { key: 'chores',      label: 'Chores',        color: '#d97706', icon: 'home-outline',       nature: 'productive' },
+  { key: 'tcg',         label: 'TCG (Social)',  color: '#be185d', icon: 'people-outline',    nature: 'entertainment' },
+  { key: 'music',       label: 'Music (Ent.)',  color: '#db2777', icon: 'musical-notes-outline', nature: 'entertainment' },
+  { key: 'entertainment',label: 'Entertainment', color: '#c026d3', icon: 'tv-outline',        nature: 'entertainment' },
+  { key: 'social',      label: 'Social',        color: '#e11d48', icon: 'chatbubble-outline', nature: 'entertainment' },
+  { key: 'personal',    label: 'Personal',      color: '#ec4899', icon: 'person-outline',     nature: 'entertainment' },
+  { key: 'sleep',       label: 'Sleep',         color: '#3b82f6', icon: 'moon-outline',       nature: 'sleep' },
+  { key: 'other',       label: 'Other',         color: '#6b7280', icon: 'ellipsis-horizontal-outline', nature: 'entertainment' },
 ];
 
 export function FocusProvider({ children }) {
@@ -71,7 +72,18 @@ export function FocusProvider({ children }) {
         try { setEntries(JSON.parse(storedEntries).map(e => ({ ...e, date: new Date(e.date) }))); } catch(e) {}
       }
       if (storedCats) {
-        try { setCategories(JSON.parse(storedCats)); } catch(e) {}
+        try { 
+          let parsed = JSON.parse(storedCats);
+          // MIGRATION: Map isProductive to nature
+          parsed = parsed.map(c => {
+            if (c.nature) return c;
+            return {
+              ...c,
+              nature: c.isProductive ? 'productive' : 'entertainment'
+            };
+          });
+          setCategories(parsed); 
+        } catch(e) {}
       }
       if (storedGoals) {
         try { setGoals(JSON.parse(storedGoals)); } catch(e) {}

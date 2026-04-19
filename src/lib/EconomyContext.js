@@ -14,6 +14,7 @@ const INITIAL_ECONOMY = {
   freeRolls: 0,
   activeStreak: 0,
   missedStreak: 0,
+  bankedRewards: [], // Array of { minutes, xp, points, title, taskId, parentTaskId, etc }
 };
 
 export function EconomyProvider({ children }) {
@@ -213,25 +214,27 @@ export function EconomyProvider({ children }) {
     setEconomy(prev => ({ ...prev, xp: prev.xp + amount }));
   };
 
-  const addFreeRoll = (amount = 1) => {
-    setEconomy(prev => ({ ...prev, freeRolls: prev.freeRolls + amount }));
+  const addBankedReward = (reward) => {
+    setEconomy(prev => ({
+      ...prev,
+      bankedRewards: [...(prev.bankedRewards || []), { ...reward, id: Date.now() + Math.random() }]
+    }));
   };
 
-  const bulkConsumeFreeRolls = () => {
-    const count = economy.freeRolls;
-    if (count > 0) {
-      setEconomy(prev => ({ ...prev, freeRolls: 0 }));
-    }
-    return count;
+  const claimBankedRewards = () => {
+    const rewards = economy.bankedRewards || [];
+    if (rewards.length === 0) return [];
+    
+    setEconomy(prev => ({ ...prev, bankedRewards: [] }));
+    return rewards;
   };
-
-  if (!loaded) return null;
 
   return (
     <EconomyContext.Provider value={{ 
       economy, addReward, spendPoints, removeReward, resetEconomy, 
       cheatEconomy, incrementActiveStreak, incrementMissedStreak, 
-      addXP, addFreeRoll, bulkConsumeFreeRolls 
+      addXP, addFreeRoll, bulkConsumeFreeRolls,
+      addBankedReward, claimBankedRewards
     }}>
       {children}
     </EconomyContext.Provider>

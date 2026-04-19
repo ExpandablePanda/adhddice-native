@@ -858,44 +858,87 @@ function TaskRow({ task, onConfirmStatus, onOpen, onHistory, onDeprioritize, onV
 
       {expanded && hasSubtasks && (
         <View style={styles.rowSubtasks}>
-          {(function renderSubs(subs, depth) {
-            return subs.map(s => {
-              const subStatusKey = s.status || 'pending';
-              const subCfg = STATUSES[subStatusKey] || STATUSES.pending;
-              const isPickerOpen = openSubPicker === s.id;
-              return (
-                <View key={s.id}>
-                  <View style={[styles.rowSubtaskItem, depth > 0 && { marginLeft: depth * 14 }]}>
-                    <TouchableOpacity
-                      onPress={(e) => { e.stopPropagation(); setOpenSubPicker(isPickerOpen ? null : s.id); setShowStatusPicker(false); }}
-                      hitSlop={6}
-                    >
-                      <View style={[styles.subDot, { backgroundColor: subCfg.color }]} />
+          {(() => {
+            const taskSelected = selectedSubtasks[task.id] || new Set();
+            return (
+              <View>
+                {taskSelected.size > 0 && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10, paddingLeft: 4 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#6366f1' }}>{taskSelected.size} Selected</Text>
+                    {['done', 'did_my_best', 'missed', 'pending'].map(st => (
+                      <TouchableOpacity 
+                        key={st} 
+                        style={{ paddingHorizontal: 6, paddingVertical: 3, borderRadius: 5, backgroundColor: STATUSES[st].color + '15' }}
+                        onPress={() => onBulkSubtaskStatus(task.id, st)}
+                      >
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: STATUSES[st].color }}>{STATUSES[st].label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                    <TouchableOpacity onPress={() => onBulkSubtaskStatus(task.id, null)} style={{ marginLeft: 'auto' }}>
+                      <Ionicons name="close-circle" size={16} color="#9ca3af" />
                     </TouchableOpacity>
-                    <Text style={[styles.rowSubtaskText, (s.status === 'done' || s.status === 'did_my_best') && styles.strikeDone]}>{s.title}</Text>
                   </View>
-                  {isPickerOpen && (
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginLeft: depth * 14 + 20, marginBottom: 6 }}>
-                      {STATUS_ORDER.map(st => {
-                        const cfg = STATUSES[st];
-                        const active = subStatusKey === st;
-                        return (
+                )}
+                {(function renderSubs(subs, depth) {
+                  return subs.map(s => {
+                    const subStatusKey = s.status || 'pending';
+                    const subCfg = STATUSES[subStatusKey] || STATUSES.pending;
+                    const isPickerOpen = openSubPicker === s.id;
+                    const isSelected = taskSelected.has(s.id);
+                    
+                    return (
+                      <View key={s.id}>
+                        <View style={[styles.rowSubtaskItem, depth > 0 && { marginLeft: depth * 14 }]}>
                           <TouchableOpacity
-                            key={st}
-                            style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 7, backgroundColor: active ? cfg.color : '#f3f4f6' }}
-                            onPress={(e) => { e.stopPropagation(); onConfirmStatus(task.id, st, s.id); setOpenSubPicker(null); }}
+                            onPress={(e) => { 
+                              e.stopPropagation(); 
+                              if (taskSelected.size > 0) {
+                                onToggleSubselect(task.id, s.id);
+                              } else {
+                                setOpenSubPicker(isPickerOpen ? null : s.id); 
+                                setShowStatusPicker(false); 
+                              }
+                            }}
+                            onLongPress={() => onToggleSubselect(task.id, s.id)}
+                            hitSlop={6}
                           >
-                            <Text style={{ fontSize: 11, fontWeight: '600', color: active ? '#fff' : cfg.color }}>{cfg.label}</Text>
+                            <View style={[styles.subDot, { backgroundColor: isSelected ? '#6366f1' : subCfg.color }]}>
+                              {isSelected && <Ionicons name="checkmark" size={6} color="#fff" />}
+                            </View>
                           </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  )}
-                  {(s.subtasks || []).length > 0 && renderSubs(s.subtasks, depth + 1)}
-                </View>
-              );
-            });
-          })(task.subtasks, 0)}
+                          <TouchableOpacity 
+                            style={{ flex: 1 }} 
+                            onLongPress={() => onToggleSubselect(task.id, s.id)}
+                            onPress={() => { if (taskSelected.size > 0) onToggleSubselect(task.id, s.id); }}
+                          >
+                            <Text style={[styles.rowSubtaskText, (s.status === 'done' || s.status === 'did_my_best') && styles.strikeDone]}>{s.title}</Text>
+                          </TouchableOpacity>
+                        </View>
+                        {isPickerOpen && (
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginLeft: depth * 14 + 20, marginBottom: 6 }}>
+                            {STATUS_ORDER.map(st => {
+                              const cfg = STATUSES[st];
+                              const active = subStatusKey === st;
+                              return (
+                                <TouchableOpacity
+                                  key={st}
+                                  style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 7, backgroundColor: active ? cfg.color : '#f3f4f6' }}
+                                  onPress={(e) => { e.stopPropagation(); onConfirmStatus(task.id, st, s.id); setOpenSubPicker(null); }}
+                                >
+                                  <Text style={{ fontSize: 11, fontWeight: '600', color: active ? '#fff' : cfg.color }}>{cfg.label}</Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        )}
+                        {(s.subtasks || []).length > 0 && renderSubs(s.subtasks, depth + 1)}
+                      </View>
+                    );
+                  });
+                })(task.subtasks, 0)}
+              </View>
+            );
+          })()}
         </View>
       )}
     </View>
@@ -2519,6 +2562,8 @@ export default function TasksScreen() {
   const [showCompleted, setShowCompleted] = useState(true);
   const [showTagMenu, setShowTagMenu] = useState(false);
   const [viewingNote, setViewingNote] = useState(null);
+  const [selectedSubtasks, setSelectedSubtasks] = useState({}); // { [taskId]: Set<subtaskId> }
+  const [showBankMenu, setShowBankMenu] = useState(false);
 
   // Self-healing: Correct any mismatched streaks and ensure unique IDs on load
   useEffect(() => {
@@ -2728,6 +2773,24 @@ export default function TasksScreen() {
       );
     } else {
       const appDay = getAppDayKey(dayStartTime);
+      
+      // Check for subtask banking
+      if (subtaskId) {
+        // If it's Done/DidMyBest, we can bank it if the user is in "multi-select" or just default it to banking for subtasks
+        if (targetStatus === 'done' || targetStatus === 'did_my_best') {
+           addBankedReward({
+             taskId: taskId,
+             subtaskId: subtaskId,
+             title: subject.title,
+             intent: targetStatus,
+             points: Math.max(1, Math.floor((subject.points || 10) * 0.5)), // Subtasks give partialXP/points
+             xp: Math.max(1, Math.floor((subject.xp || 20) * 0.5)),
+           });
+           setTasks(prev => prev.map(t => t.id === taskId ? { ...t, subtasks: updateStatusInTree(t.subtasks, subtaskId, targetStatus) } : t));
+           return;
+        }
+      }
+
       if ((task.status === 'done' || task.status === 'did_my_best') && task.gainedReward) {
         removeReward(task.gainedReward.points, task.gainedReward.xp);
         const updatedHistory = { ...(task.statusHistory || {}), [appDay]: targetStatus };
@@ -2752,23 +2815,67 @@ export default function TasksScreen() {
     }
   }
 
+  const handleBulkSubtaskStatus = (taskId, status) => {
+    const selected = selectedSubtasks[taskId];
+    if (!selected || selected.size === 0) return;
+    
+    selected.forEach(subId => {
+      confirmStatus(taskId, status, subId);
+    });
+    
+    setSelectedSubtasks(prev => {
+      const next = { ...prev };
+      delete next[taskId];
+      return next;
+    });
+  };
+
   function handleTaskCompleting(id, reward) {
+    if (reward) {
+      addReward(reward.points, reward.xp);
+    }
     incrementActiveStreak();
 
-    // History completions: just show the roll, don't change task status/dates
-    // EXCEPT if it's for today — then we want it to act like a normal completion
+    // Check if this was part of a banked collection chain
+    const wasBanked = completingTask?._isBankedCollection;
+    const remaining = completingTask?._remainingRewards || [];
+
+    if (wasBanked && remaining.length > 0) {
+      // Continue the chain
+      setCompletingTask(null); // Close current
+      setTimeout(() => {
+        setCompletingTask({
+          ...remaining[0],
+          subtasks: [],
+          _isBankedCollection: true,
+          _remainingRewards: remaining.slice(1)
+        });
+      }, 300);
+      return;
+    }
+
+    // Existing: History completions: just show the roll, don't change task status/dates
     const isTodayHistory = completingTask?._isHistoryCompletion && 
                            completingTask?._dateKey === getLocalDateKey();
     
     if (completingTask?._isHistoryCompletion && !isTodayHistory) {
       setCompletingTask(null);
-      if (rewardQueue.length > 0) {
-        const [next, ...rest] = rewardQueue;
-        setRewardQueue(rest);
-        setTimeout(() => setCompletingTask(next), 400);
-      }
       return;
     }
+
+    // Normal completion
+    setTasks(prev => prev.map(t => {
+      if (t.id === id) {
+        return { 
+          ...t, 
+          status: 'done', 
+          completedAt: new Date().toISOString(),
+          gainedReward: reward,
+          streak: calculateTaskStreak({ ...(t.statusHistory || {}), [getLocalDateKey()]: 'done' }, dayStartTime)
+        };
+      }
+      return t;
+    }));
 
     if (completingTask?.isSubtaskRoll) {
       setCompletingTask(null);
@@ -3277,7 +3384,27 @@ export default function TasksScreen() {
           ? <Text style={styles.empty}>No tasks — tap New or import.</Text>
           : (filterMissedStreak || filterStreak)
             ? filtered.map((item, i) => (
-                <TaskRow key={String(item.id) + '-' + i} task={item} onConfirmStatus={confirmStatus} onOpen={setEditingTask} onHistory={t => setHistoryTask(t.id)} onDeprioritize={(id) => setTasks(prev => prev.map(t => t.id === id ? { ...t, isPriority: false } : t))} />
+                <TaskRow 
+                  key={String(item.id) + '-' + i} 
+                  task={item} 
+                  dayStartTime={dayStartTime}
+                  onConfirmStatus={confirmStatus} 
+                  onOpen={setEditingTask} 
+                  onHistory={t => setHistoryTask(t.id)} 
+                  onDeprioritize={(id) => setTasks(prev => prev.map(t => t.id === id ? { ...t, isPriority: false } : t))} 
+                  onViewNote={setViewingNote}
+                  selectedSubtasks={selectedSubtasks}
+                  onToggleSubselect={(tid, sid) => {
+                    setSelectedSubtasks(prev => {
+                      const next = { ...prev };
+                      const set = new Set(next[tid] || []);
+                      if (set.has(sid)) set.delete(sid); else set.add(sid);
+                      if (set.size === 0) delete next[tid]; else next[tid] = set;
+                      return next;
+                    });
+                  }}
+                  onBulkSubtaskStatus={handleBulkSubtaskStatus}
+                />
               ))
             : sections.map(section => (
                 <View key={section.title}>
@@ -3289,7 +3416,27 @@ export default function TasksScreen() {
                     onToggle={(t) => setCollapsedSections(prev => ({ ...prev, [t]: !prev[t] }))}
                   />
                   {!collapsedSections[section.title] && section.data.map((item, i) => (
-                    <TaskRow key={String(item.id) + '-' + i} task={item} onConfirmStatus={confirmStatus} onOpen={setEditingTask} onHistory={t => setHistoryTask(t.id)} onDeprioritize={(id) => setTasks(prev => prev.map(t => t.id === id ? { ...t, isPriority: false } : t))} onViewNote={setViewingNote} />
+                    <TaskRow 
+                      key={String(item.id) + '-' + i} 
+                      task={item} 
+                      dayStartTime={dayStartTime}
+                      onConfirmStatus={confirmStatus} 
+                      onOpen={setEditingTask} 
+                      onHistory={t => setHistoryTask(t.id)} 
+                      onDeprioritize={(id) => setTasks(prev => prev.map(t => t.id === id ? { ...t, isPriority: false } : t))} 
+                      onViewNote={setViewingNote} 
+                      selectedSubtasks={selectedSubtasks}
+                      onToggleSubselect={(tid, sid) => {
+                        setSelectedSubtasks(prev => {
+                          const next = { ...prev };
+                          const set = new Set(next[tid] || []);
+                          if (set.has(sid)) set.delete(sid); else set.add(sid);
+                          if (set.size === 0) delete next[tid]; else next[tid] = set;
+                          return next;
+                        });
+                      }}
+                      onBulkSubtaskStatus={handleBulkSubtaskStatus}
+                    />
                   ))}
                 </View>
               ))
@@ -3473,6 +3620,31 @@ export default function TasksScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Banked Rewards Collector */}
+      {economy.bankedRewards?.length > 0 && (
+        <TouchableOpacity 
+          style={styles.rewardsCollector}
+          onPress={() => {
+            const rewards = claimBankedRewards();
+            if (rewards.length > 0) {
+              // Trigger the first reward roll
+              setCompletingTask({
+                ...rewards[0],
+                subtasks: [], // Don't show subtasks in roll
+                _isBankedCollection: true,
+                _remainingRewards: rewards.slice(1)
+              });
+            }
+          }}
+        >
+          <View style={styles.collectorLeft}>
+            <Ionicons name="gift" size={20} color="#fff" />
+            <Text style={styles.collectorText}>Collect {economy.bankedRewards.length} Rewards</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#fff" />
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 }
@@ -3535,6 +3707,33 @@ const styles = StyleSheet.create({
   },
   timerClose: {
     padding: 4,
+  },
+  rewardsCollector: {
+    position: 'absolute',
+    bottom: 30,
+    alignSelf: 'center',
+    backgroundColor: '#6366f1',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 25,
+    minWidth: 200,
+    shadowColor: '#6366f1',
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  collectorLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  collectorText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
   },
   headerActions:{ flexDirection: 'row', alignItems: 'center', gap: 4 },
   iconBtn:      { padding: 8, borderRadius: 8 },
