@@ -12,22 +12,12 @@ import { colors } from '../theme';
 import { useTheme } from '../lib/ThemeContext';
 import ScrollToTop from '../components/ScrollToTop';
 import ModalScreen from '../components/ModalScreen';
-import { useFocus } from '../lib/FocusContext';
+import { useFocus, DEFAULT_CATEGORIES } from '../lib/FocusContext';
 import { useEconomy } from '../lib/EconomyContext';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
-// ── Default categories ───────────────────────────────────────────────────────
-const DEFAULT_CATEGORIES = [
-  { key: 'work',        label: 'Work',      color: '#4f46e5', icon: 'briefcase-outline', nature: 'productive' },
-  { key: 'study',       label: 'Study',     color: '#0891b2', icon: 'book-outline',      nature: 'productive' },
-  { key: 'creative',    label: 'Creative',  color: '#7c3aed', icon: 'color-palette-outline', nature: 'productive' },
-  { key: 'exercise',    label: 'Exercise',  color: '#059669', icon: 'fitness-outline',    nature: 'productive' },
-  { key: 'chores',      label: 'Chores',    color: '#d97706', icon: 'home-outline',       nature: 'productive' },
-  { key: 'personal',    label: 'Personal',  color: '#ec4899', icon: 'person-outline',     nature: 'entertainment' },
-  { key: 'sleep',       label: 'Sleep',     color: '#3b82f6', icon: 'moon-outline',       nature: 'sleep' },
-  { key: 'other',       label: 'Other',     color: '#6b7280', icon: 'ellipsis-horizontal-outline', nature: 'entertainment' },
-];
+
 
 // ── Time formatting ──────────────────────────────────────────────────────────
 function fmtTimer(seconds) {
@@ -177,7 +167,7 @@ const goalStyles = StyleSheet.create({
 // CATEGORY BREAKDOWN
 // ═════════════════════════════════════════════════════════════════════════════
 
-function CategoryBreakdown({ entries, period, categories = DEFAULT_CATEGORIES, goals = {}, specificDate = null }) {
+function CategoryBreakdown({ entries, period, categories, goals = {}, specificDate = null }) {
   const cats = categories;
   const now = new Date();
 
@@ -357,7 +347,7 @@ function FocusCalendarModal({ visible, currentDate, onSelect, onClose }) {
 // ADD / EDIT ENTRY MODAL
 // ═════════════════════════════════════════════════════════════════════════════
 
-function EntryModal({ visible, entry, onSave, onDelete, onClose, categories = DEFAULT_CATEGORIES }) {
+function EntryModal({ visible, entry, onSave, onDelete, onClose, categories }) {
   const isEdit = entry && entry.id;
   const [category, setCategory] = useState(entry?.category || categories[0]?.key || 'work');
   const [hours, setHours]       = useState('');
@@ -1283,7 +1273,7 @@ export default function FocusScreen() {
     periodEntries.forEach(e => {
       const dKey = fmtDate(e.date);
       if (!dayMap[dKey]) dayMap[dKey] = { productive: 0, paid: 0, entertainment: 0, sleep: 0 };
-      const cat = categories.find(c => c.key === e.category) || DEFAULT_CATEGORIES[7];
+      const cat = categories.find(c => c.key === e.category) || { label: 'Deleted', color: '#94a3b8' };
       const nature = cat.nature || (cat.isProductive ? 'productive' : 'entertainment');
       dayMap[dKey][nature] += e.minutes;
     });
@@ -1347,7 +1337,8 @@ export default function FocusScreen() {
             decelerationRate="fast"
           >
             {activeTimerKeys.map(key => {
-              const cat = categories.find(c => c.key === key) || DEFAULT_CATEGORIES.find(c => c.key === key) || DEFAULT_CATEGORIES[6];
+              const cat = categories.find(c => c.key === key);
+              if (!cat) return null; // Strictly honor deletions
               const state = timerState[key] || {};
               const isRunning = !!state.startTime;
               const elapsed = getElapsed(key);
@@ -1664,7 +1655,7 @@ export default function FocusScreen() {
             <Text style={styles.emptyNote}>No entries yet.</Text>
           ) : (
             recentEntries.map(entry => {
-              const cat = categories.find(c => c.key === entry.category) || categories[0] || DEFAULT_CATEGORIES[6];
+              const cat = categories.find(c => c.key === entry.category) || { label: 'Deleted', color: '#94a3b8' };
               return (
                 <TouchableOpacity key={entry.id} style={styles.entryRow} onPress={() => setEditEntry(entry)}>
                   <View style={[styles.entryCatIcon, { backgroundColor: cat.color + '18' }]}>
@@ -1780,7 +1771,7 @@ export default function FocusScreen() {
             
             <View style={styles.reorderList}>
               {activeTimerKeys.map((key, index) => {
-                const cat = categories.find(c => c.key === key) || DEFAULT_CATEGORIES.find(c => c.key === key) || DEFAULT_CATEGORIES[6];
+                const cat = categories.find(c => c.key === key) || { label: key, color: '#94a3b8' };
                 return (
                   <View key={key} style={styles.reorderItem}>
                     <View style={[styles.reorderIcon, { backgroundColor: cat.color + '20' }]}>

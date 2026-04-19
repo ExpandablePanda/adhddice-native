@@ -6,7 +6,7 @@ import { supabase } from './supabase';
 
 const FocusContext = createContext();
 
-const DEFAULT_CATEGORIES = [
+export const DEFAULT_CATEGORIES = [
   { key: 'work',        label: 'Work',          color: '#4f46e5', icon: 'briefcase-outline', nature: 'productive' },
   { key: 'lamprey',     label: 'Lamprey (Work)',color: '#4338ca', icon: 'flash-outline',     nature: 'productive' },
   { key: 'study',       label: 'Study',         color: '#0891b2', icon: 'book-outline',      nature: 'productive' },
