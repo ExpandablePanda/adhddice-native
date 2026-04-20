@@ -814,7 +814,7 @@ function TaskRow({
               {task.estimatedMinutes ? <View style={styles.metaChip}><Ionicons name="hourglass-outline" size={10} color="#6b7280" /><Text style={styles.metaChipText}>~{task.estimatedMinutes >= 60 ? `${Math.floor(task.estimatedMinutes/60)}h${task.estimatedMinutes%60 ? ` ${task.estimatedMinutes%60}m` : ''}` : `${task.estimatedMinutes}m`}</Text></View> : null}
               {(task.dueDate || task.dueTime) ? <View style={styles.metaChip}><Ionicons name="calendar-outline" size={10} color="#6b7280" /><Text style={styles.metaChipText}>{task.dueDate} {task.dueTime}</Text></View> : null}
               {total > 0 && <View style={styles.metaChip}><Ionicons name="checkbox-outline" size={10} color="#6b7280" /><Text style={styles.metaChipText}>{done}/{total}</Text></View>}
-              {(task.streak && task.streak > 0) ? <View style={[styles.metaChip, { backgroundColor: '#fee2e2' }]}><Ionicons name="flame" size={10} color="#ef4444" /><Text style={[styles.metaChipText, { color: '#ef4444' }]}>{task.streak}</Text></View> : null}
+              {(task.streak && task.streak > 0) ? <View style={[styles.metaChip, { backgroundColor: '#fee2e2' }]}><Ionicons name="flame" size={10} color="#ef4444" /><Text style={[styles.metaChipText, { color: '#ef4444' }]}>Hot Streak {task.streak}</Text></View> : null}
               {(() => { const ms = calculateTaskMissedStreak(task.statusHistory, dayStartTime); return ms > 0 ? <View style={[styles.metaChip, { backgroundColor: '#1f2937' }]}><Text style={[styles.metaChipText, { color: '#f9fafb' }]}>💀 {ms}</Text></View> : null; })()}
               {linkedNotesCount > 0 && (
                 <TouchableOpacity 
@@ -3700,7 +3700,7 @@ export default function TasksScreen() {
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 1.5, borderColor: filterStreak ? '#ef4444' : '#ef444440', backgroundColor: filterStreak ? '#ef4444' : '#fff' }}
                   onPress={() => setFilterStreak(v => !v)}
                 >
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: filterStreak ? '#fff' : '#ef4444' }}>🔥 Streak</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: filterStreak ? '#fff' : '#ef4444' }}>🔥 Hot Streak</Text>
                   <Text style={{ fontSize: 11, fontWeight: '700', color: filterStreak ? 'rgba(255,255,255,0.7)' : '#ef444480' }}>{streakCount}</Text>
                 </TouchableOpacity>
               );

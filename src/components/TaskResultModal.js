@@ -5,14 +5,15 @@ import { useAudioPlayer } from 'expo-audio';
 import { useEconomy } from '../lib/EconomyContext';
 import { useTasks } from '../lib/TasksContext';
 import { colors } from '../theme';
+import Dice3D from './Dice3D';
 
 const OPTIONS = [
-  { label: 'Easy (Quick win, low effort)', dice: 4, color: '#10b981' },
-  { label: 'On Time (Completed on time)', dice: 6, color: '#3b82f6' },
-  { label: 'Restarted Streak (Back on track)', dice: 8, color: '#8b5cf6' },
-  { label: 'Procrastinated Few Days (2-6 days)', dice: 10, color: '#f59e0b' },
-  { label: 'Procrastinated a Week+ (>1 week)', dice: 12, color: '#f97316' },
-  { label: 'Procrastinated Months (Finally!)', dice: 20, color: '#ef4444' },
+  { label: 'Quick Win [Close to No Effort to Finish]', count: 1, mode: 'highest', color: '#10b981', multiDice: 4 },
+  { label: 'On-Time [Completed On-Time or started a new hot streak]', count: 2, mode: 'highest', color: '#3b82f6', multiDice: 4 },
+  { label: 'Missed or Hot Streak was between 3-6 days', count: 3, mode: 'highest', color: '#8b5cf6', multiDice: 4 },
+  { label: 'Missed or Hot Streak was 7-14 days', count: 2, mode: 'sum', color: '#f59e0b', multiDice: 4 },
+  { label: 'Missed or Hot Streak was higher than 15 days', count: 3, mode: 'sum', color: '#7c3aed', multiDice: 4 },
+  { label: 'Missed or Hot Streak was higher than 30 days', count: 2, mode: 'sum', color: '#ec4899', multiDice: 20 },
 ];
 
 export default function TaskResultModal({ visible, task, onClose, onComplete }) {
@@ -21,6 +22,7 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
   const [step, setStep] = useState('select'); // select | roll | result
   const [selectedOpt, setSelectedOpt] = useState(null);
   const [baseRoll, setBaseRoll] = useState(1);
+  const [rollDetails, setRollDetails] = useState({ r1: 0, r2: 0, r3: 0 });
   const [multiRoll, setMultiRoll] = useState(1);
   
   const spinVal = useRef(new Animated.Value(0)).current;
@@ -52,7 +54,18 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start(() => {
-      const base = Math.floor(Math.random() * opt.dice) + 1;
+      let r1 = Math.floor(Math.random() * 20) + 1;
+      let r2 = opt.count >= 2 ? Math.floor(Math.random() * 20) + 1 : 0;
+      let r3 = opt.count >= 3 ? Math.floor(Math.random() * 20) + 1 : 0;
+      
+      let base;
+      if (opt.mode === 'highest') {
+        base = Math.max(r1, r2, r3);
+      } else {
+        base = r1 + r2 + r3;
+      }
+      
+      setRollDetails({ r1, r2, r3 });
       setBaseRoll(base);
       setStep('showBase');
       spinVal.setValue(0);
@@ -62,24 +75,28 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
         setStep('rollMulti');
         playRollSound();
         
-        // Second roll: d20 Multiplier
+        // Second roll: Multiplier
         Animated.timing(spinVal, {
           toValue: 1,
           duration: 1200,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }).start(() => {
-          const multi = Math.floor(Math.random() * 4) + 1; // Multiplier is always d4
+          const multi = Math.floor(Math.random() * (opt.multiDice || 4)) + 1;
           setMultiRoll(multi);
           
           const pts = base * multi;
           const xp = Math.floor(pts / 2);
           
           addReward(pts, xp);
-          setStep('result');
-          spinVal.setValue(0);
+          
+          // Wait to reveal multiplier number before showing final aggregate
+          setTimeout(() => {
+            setStep('result');
+            spinVal.setValue(0);
+          }, 2000);
         });
-      }, 1500);
+      }, 3000);
     });
   }
 
@@ -106,11 +123,15 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
               <Text style={styles.title}>
                 {task._isBulk ? `Bulk Collection (${task.rewardsCount})` : 'Task Complete!'}
               </Text>
-              <Text style={styles.sub}>How did it go? Choose the option that best fits.</Text>
+              <Text style={styles.sub}>
+                Choose your reward tier: [H] = Highest d20 | [Σ] = Sum of d20s | [xd20] = d20 Multiplier
+              </Text>
               {OPTIONS.map((opt, i) => (
                 <TouchableOpacity key={i} style={[styles.optBtn, { borderColor: opt.color }]} onPress={() => handleRoll(opt)}>
                   <View style={[styles.diceBadge, { backgroundColor: opt.color }]}>
-                    <Text style={styles.diceText}>d{opt.dice}</Text>
+                    <Text style={styles.diceText}>
+                      {opt.count}d20{opt.mode === 'highest' ? ' [H]' : (opt.multiDice === 20 ? ' [xd20]' : ' [Σ]')}
+                    </Text>
                   </View>
                   <Text style={[styles.optLabel, { color: opt.color }]}>{opt.label}</Text>
                 </TouchableOpacity>
@@ -120,32 +141,57 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
 
           {step === 'rollBase' && (
             <View style={styles.rollContainer}>
-              <Text style={styles.title}>Rolling Initial (d{selectedOpt.dice})...</Text>
-              <Animated.View style={{ transform: [{ rotate: spinVal.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '1080deg'] }) }] }}>
-                <Ionicons name="dice" size={80} color={selectedOpt.color} />
-              </Animated.View>
+              <Text style={styles.title}>Rolling {selectedOpt.count}d20 ({selectedOpt.mode === 'highest' ? 'Highest' : 'Total'})...</Text>
+              <View style={{ height: 120, width: '100%', flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
+                <Dice3D size={110} rolling={true} color={selectedOpt.color} />
+                {selectedOpt.count >= 2 && <Dice3D size={110} rolling={true} color={selectedOpt.color} />}
+                {selectedOpt.count >= 3 && <Dice3D size={110} rolling={true} color={selectedOpt.color} />}
+              </View>
             </View>
           )}
 
           {step === 'showBase' && (
             <View style={styles.rollContainer}>
-              <Text style={styles.title}>You rolled a {baseRoll}!</Text>
-              <Ionicons name="dice" size={80} color={selectedOpt.color} />
+              <Text style={styles.title}>
+                {selectedOpt.mode === 'highest' && selectedOpt.count > 1
+                  ? `Best Roll: ${baseRoll}!` 
+                  : selectedOpt.mode === 'sum' 
+                    ? `Total: ${baseRoll}!`
+                    : `You rolled a ${baseRoll}!`}
+              </Text>
+              <View style={{ height: 110, width: '100%', flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
+                <Dice3D size={110} rolling={false} result={rollDetails.r1} color={selectedOpt.color} />
+                {selectedOpt.count >= 2 && <Dice3D size={110} rolling={false} result={rollDetails.r2} color={selectedOpt.color} />}
+                {selectedOpt.count >= 3 && <Dice3D size={110} rolling={false} result={rollDetails.r3} color={selectedOpt.color} />}
+              </View>
+              {selectedOpt.count > 1 && (
+                <Text style={{ marginTop: 8, color: '#6b7280', fontSize: 13, fontWeight: '600' }}>
+                  {selectedOpt.mode === 'highest' 
+                    ? `(${rollDetails.r1}, ${rollDetails.r2}${selectedOpt.count === 3 ? `, ${rollDetails.r3}` : ''})`
+                    : `(${rollDetails.r1} + ${rollDetails.r2}${selectedOpt.count === 3 ? ` + ${rollDetails.r3}` : ''})`}
+                </Text>
+              )}
             </View>
           )}
 
           {step === 'rollMulti' && (
             <View style={styles.rollContainer}>
-              <Text style={styles.title}>Rolling Multiplier (d4)...</Text>
+              <Text style={styles.title}>Rolling Multiplier (d{selectedOpt.multiDice || 4})...</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20 }}>
                 <View style={{ alignItems: 'center' }}>
                   <Text style={{ fontSize: 24, fontWeight: '800', color: selectedOpt.color }}>{baseRoll}</Text>
                   <Text style={{ fontSize: 12, color: '#6b7280' }}>Base</Text>
                 </View>
                 <Text style={{ fontSize: 20, fontWeight: '800', color: '#d1d5db' }}>x</Text>
-                <Animated.View style={{ transform: [{ rotate: spinVal.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '1080deg'] }) }] }}>
-                  <Ionicons name="dice" size={80} color="#6366f1" />
-                </Animated.View>
+                {selectedOpt.multiDice === 20 ? (
+                  <View style={{ height: 100, width: 100 }}>
+                    <Dice3D size={100} rolling={true} color="#6366f1" />
+                  </View>
+                ) : (
+                  <Animated.View style={{ transform: [{ rotate: spinVal.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '1080deg'] }) }] }}>
+                    <Ionicons name="dice" size={80} color="#6366f1" />
+                  </Animated.View>
+                )}
               </View>
             </View>
           )}
@@ -156,12 +202,12 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
               
               <View style={styles.calcRow}>
                 <View style={styles.calcBox}>
-                  <Text style={styles.calcLbl}>d{selectedOpt.dice}</Text>
+                  <Text style={styles.calcLbl}>{selectedOpt.count}d20 ({selectedOpt.mode === 'highest' ? 'Best' : 'Sum'})</Text>
                   <Text style={styles.calcVal}>{baseRoll}</Text>
                 </View>
                 <Text style={styles.calcMath}>x</Text>
                 <View style={styles.calcBox}>
-                  <Text style={styles.calcLbl}>Mult (d4)</Text>
+                  <Text style={styles.calcLbl}>Mult (d{selectedOpt.multiDice || 4})</Text>
                   <Text style={styles.calcVal}>{multiRoll}</Text>
                 </View>
               </View>

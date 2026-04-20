@@ -133,7 +133,7 @@ function D20Model({ rolling, result, color, manualRotation }) {
       meshRef.current.rotateOnWorldAxis(axis, delta * 15);
       currentQuaternion.current.copy(meshRef.current.quaternion);
     } else if (result) {
-      const targetRoll = result.face || 20;
+      const targetRoll = typeof result === 'object' ? (result.face || 20) : result;
 
       // 1. Try to use our perfectly mapped DYNAMIC geometry rotations (clamped modulo to prevent overflow)
       // 2. If it hasn't mapped yet, fallback to the manual ones

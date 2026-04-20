@@ -4,15 +4,20 @@ import { useAudioPlayer } from 'expo-audio';
 import { Ionicons } from '@expo/vector-icons';
 import { useEconomy } from '../lib/EconomyContext';
 import ModalScreen from './ModalScreen';
+import Dice3D from './Dice3D';
 
 export default function EfficiencyRollModal({ visible, rolls, onClose, onFinish }) {
   const { bulkConsumeFreeRolls, addReward } = useEconomy();
   const [step, setStep] = useState('select'); // select | rolling_tasks | ready_mult | rolling_mult | results
-  const [selectedDie, setSelectedDie] = useState(8);
-  const [diceResults, setDiceResults] = useState([]);
+  const [selectedOpt, setSelectedOpt] = useState(null);
   const [multiplier, setMultiplier] = useState(1);
-  const [revealedCount, setRevealedCount] = useState(0);
-  const [isRollingCurrent, setIsRollingCurrent] = useState(false);
+  const [finalResults, setFinalResults] = useState([]); // Array of winners
+  
+  // Per-task animation state
+  const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
+  const [currentSubs, setCurrentSubs] = useState([]);
+  const [animationStage, setAnimationStage] = useState('idle'); // idle | rolling | settled | cleanup
+  
   const rollPlayer = useAudioPlayer(require('../../assets/dice-roll.wav'));
 
   function playRollSound() {
@@ -23,59 +28,71 @@ export default function EfficiencyRollModal({ visible, rolls, onClose, onFinish 
   }
 
   const dieOptions = [
-    { sides: 4, name: 'D4', desc: 'Easy Tasks' },
-    { sides: 6, name: 'D6', desc: 'Routine Tasks' },
-    { sides: 8, name: 'D8', desc: 'Medium Tasks' },
-    { sides: 10, name: 'D10', desc: 'Significant Tasks' },
-    { sides: 12, name: 'D12', desc: 'Difficult Tasks' },
-    { sides: 20, name: 'D20', desc: 'Epic Achievement' },
+    { id: 'easy', count: 1, name: 'Easy Tasks', desc: '1d20 per task' },
+    { id: 'medium', count: 2, name: 'Medium Tasks', desc: 'Best of 2d20 per task' },
+    { id: 'hard', count: 3, name: 'Hard Tasks', desc: 'Best of 3d20 per task' },
   ];
+
+  useEffect(() => {
+    if (visible && !selectedOpt) {
+      setSelectedOpt(dieOptions[0]);
+    }
+  }, [visible]);
 
   useEffect(() => {
     if (visible) {
       setStep('select');
-      setDiceResults([]);
+      setFinalResults([]);
+      setCurrentTaskIndex(0);
+      setAnimationStage('idle');
       setMultiplier(1);
-      setRevealedCount(0);
     }
   }, [visible]);
 
   function startRoll() {
     setStep('rolling_tasks');
-    setRevealedCount(0);
-    const results = Array.from({ length: rolls }, () => Math.floor(Math.random() * selectedDie) + 1);
-    setDiceResults(results);
+    setFinalResults([]);
+    setCurrentTaskIndex(0);
     
     // Multiplier is decided but hidden
     setMultiplier(Math.floor(Math.random() * 4) + 1);
 
-    revealNextDie(0, results);
+    rollNextTask(0);
   }
 
-  function revealNextDie(index, results) {
-    if (index >= results.length) {
+  function rollNextTask(index) {
+    if (index >= rolls) {
       setTimeout(() => setStep('ready_mult'), 1000);
       return;
     }
 
-    setIsRollingCurrent(true);
+    setCurrentTaskIndex(index);
+    setAnimationStage('rolling');
+    setCurrentSubs([]); // Reset visuals
     playRollSound();
 
-    // Roll/Animate for 1.2s to make it feel deliberate
+    // Roll for 1.5s
     setTimeout(() => {
-      setIsRollingCurrent(false);
-      setRevealedCount(index + 1);
-      
-      // Pause for 600ms after reveal before starting next sequence
-      if (index + 1 < results.length) {
+      const subs = Array.from({ length: selectedOpt.count }, () => Math.floor(Math.random() * 20) + 1);
+      setCurrentSubs(subs);
+      setAnimationStage('settled');
+
+      // Stay settled for 1.5s so user can process ALL dice
+      setTimeout(() => {
+        setAnimationStage('cleanup');
+        const winner = Math.max(...subs);
+        
+        // Wait 1s for the "cleanup" (fading losers)
         setTimeout(() => {
-          revealNextDie(index + 1, results);
-        }, 600);
-      } else {
-        revealNextDie(index + 1, results);
-      }
-    }, 1200);
+          setFinalResults(prev => [...prev, winner]);
+          // Next task
+          rollNextTask(index + 1);
+        }, 1000);
+      }, 1500);
+    }, 1500);
   }
+
+  // Removed old revealNextDie logic in favor of rollNextTask hierarchy
 
   function handleRollMultiplier() {
     setStep('rolling_mult');
@@ -86,7 +103,7 @@ export default function EfficiencyRollModal({ visible, rolls, onClose, onFinish 
     }, 2000);
   }
 
-  const sum = diceResults.reduce((acc, curr) => acc + curr, 0);
+  const sum = finalResults.reduce((acc, curr) => acc + curr, 0);
   const payoutPoints = sum * multiplier;
   const payoutXp = Math.floor(payoutPoints / 2);
 
@@ -123,64 +140,91 @@ export default function EfficiencyRollModal({ visible, rolls, onClose, onFinish 
 
               {dieOptions.map(opt => (
                 <TouchableOpacity
-                  key={opt.sides}
-                  style={[styles.dieOption, selectedDie === opt.sides && styles.dieOptionActive]}
-                  onPress={() => setSelectedDie(opt.sides)}
+                  key={opt.id}
+                  style={[styles.dieOption, selectedOpt?.id === opt.id && styles.dieOptionActive]}
+                  onPress={() => setSelectedOpt(opt)}
                 >
                   <View style={styles.dieInfo}>
-                    <Ionicons name="dice-outline" size={24} color={selectedDie === opt.sides ? '#8b5cf6' : '#9ca3af'} />
+                    <Ionicons name="dice-outline" size={24} color={selectedOpt?.id === opt.id ? '#8b5cf6' : '#9ca3af'} />
                     <View>
-                      <Text style={[styles.dieName, selectedDie === opt.sides && { color: '#8b5cf6' }]}>{opt.name}</Text>
+                      <Text style={[styles.dieName, selectedOpt?.id === opt.id && { color: '#8b5cf6' }]}>{opt.name}</Text>
                       <Text style={styles.dieDesc}>{opt.desc}</Text>
                     </View>
                   </View>
                   <Ionicons 
-                    name={selectedDie === opt.sides ? 'radio-button-on' : 'radio-button-off'} 
+                    name={selectedOpt?.id === opt.id ? 'radio-button-on' : 'radio-button-off'} 
                     size={22} 
-                    color={selectedDie === opt.sides ? '#8b5cf6' : '#d1d5db'} 
+                    color={selectedOpt?.id === opt.id ? '#8b5cf6' : '#d1d5db'} 
                   />
                 </TouchableOpacity>
               ))}
 
               <TouchableOpacity style={styles.beginBtn} onPress={startRoll}>
-                <Text style={styles.beginBtnText}>Roll {rolls} x D{selectedDie}</Text>
+                <Text style={styles.beginBtnText}>Roll {rolls} x {selectedOpt?.name}</Text>
               </TouchableOpacity>
             </>
           )}
 
           {step === 'rolling_tasks' && (
-            <>
-              <Text style={styles.title}>Rolling {rolls} Dice...</Text>
-              <Text style={styles.subtitle}>Revealing sequential results</Text>
-              <View style={styles.rollingDiceArea}>
-                {diceResults.slice(0, revealedCount).map((res, i) => (
-                  <View key={i} style={styles.smallDie}>
-                    <Text style={styles.smallDieNum}>{res}</Text>
-                  </View>
-                ))}
-                {isRollingCurrent && (
-                   <View style={[styles.smallDie, { backgroundColor: '#eef2ff', borderWidth: 2, borderColor: '#8b5cf6' }]}>
-                     <Ionicons name="dice" size={24} color="#8b5cf6" />
-                   </View>
+            <View style={{ width: '100%', alignItems: 'center' }}>
+              <Text style={styles.title}>Efficiency Sequence</Text>
+              <Text style={styles.subtitle}>Task {currentTaskIndex + 1} of {rolls} ({selectedOpt.name})</Text>
+              
+              <View style={{ height: 200, width: '100%', flexDirection: 'row', justifyContent: 'center', gap: 10, marginVertical: 30 }}>
+                {animationStage === 'rolling' && (
+                  <>
+                    <Dice3D size={120} rolling={true} color={selectedOpt.color || '#8b5cf6'} />
+                    {selectedOpt.count >= 2 && <Dice3D size={120} rolling={true} color={selectedOpt.color || '#8b5cf6'} />}
+                    {selectedOpt.count >= 3 && <Dice3D size={120} rolling={true} color={selectedOpt.color || '#8b5cf6'} />}
+                  </>
+                )}
+                {(animationStage === 'settled' || animationStage === 'cleanup') && (
+                  <>
+                    {currentSubs.map((val, idx) => {
+                      const isWinner = val === Math.max(...currentSubs);
+                      // In cleanup, hide losers
+                      if (animationStage === 'cleanup' && !isWinner) return null;
+                      return (
+                        <View key={idx} style={{ alignItems: 'center' }}>
+                          <Dice3D size={120} rolling={false} result={val} color={isWinner ? '#8b5cf6' : '#9ca3af'} />
+                          {isWinner && (
+                            <View style={{ marginTop: 10, backgroundColor: '#8b5cf6', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>BEST</Text>
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </>
                 )}
               </View>
-              {revealedCount >= diceResults.length && (
-                <Text style={styles.subtitle}>Total Sum: {sum}</Text>
-              )}
-            </>
+
+              <Text style={styles.sumLabel}>History</Text>
+              <View style={[styles.rollingDiceArea, { marginTop: 0 }]}>
+                {finalResults.map((res, i) => (
+                  <View key={i} style={styles.historyDie}>
+                    <Dice3D size={50} rolling={false} result={res} color="#8b5cf6" />
+                  </View>
+                ))}
+              </View>
+            </View>
           )}
 
           {step === 'ready_mult' && (
             <>
-              <Text style={styles.title}>Dice Total: {sum}</Text>
+              <Text style={styles.title}>All Results Collected</Text>
+              <View style={styles.sumResultArea}>
+                <Text style={styles.sumLabel}>Total Face Sum</Text>
+                <Text style={styles.sumVal}>{sum}</Text>
+              </View>
               <View style={styles.rollingDiceArea}>
-                {diceResults.map((res, i) => (
-                  <View key={i} style={styles.smallDie}>
-                    <Text style={styles.smallDieNum}>{res}</Text>
+                {finalResults.map((res, i) => (
+                  <View key={i} style={styles.historyDie}>
+                    <Dice3D size={50} rolling={false} result={res} color="#8b5cf6" />
                   </View>
                 ))}
               </View>
-              <Text style={styles.subtitle}>All tasks accounted for. Now roll for your bonus multiplier!</Text>
+              <Text style={styles.subtitle}>Excellent focus! Now roll for your final Efficiency Multiplier.</Text>
               <TouchableOpacity style={[styles.beginBtn, { backgroundColor: '#4f46e5' }]} onPress={handleRollMultiplier}>
                 <Ionicons name="flash" size={20} color="#fff" style={{marginRight: 8}}/>
                 <Text style={styles.beginBtnText}>Roll Multiplier (D4)</Text>
@@ -209,6 +253,14 @@ export default function EfficiencyRollModal({ visible, rolls, onClose, onFinish 
               <View style={styles.sumResultArea}>
                 <Text style={styles.sumLabel}>Total Face Sum</Text>
                 <Text style={styles.sumVal}>{sum}</Text>
+              </View>
+
+              <View style={styles.rollingDiceArea}>
+                {finalResults.map((res, i) => (
+                  <View key={i} style={styles.historyDie}>
+                    <Dice3D size={50} rolling={false} result={res} color="#8b5cf6" />
+                  </View>
+                ))}
               </View>
 
               <View style={styles.multArea}>
@@ -375,22 +427,11 @@ const styles = StyleSheet.create({
     gap: 12,
     marginVertical: 40,
   },
-  smallDie: {
-    width: 50,
-    height: 50,
-    borderRadius: 12,
-    backgroundColor: '#8b5cf6',
+  historyDie: {
+    width: 60,
+    height: 60,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  smallDieNum: {
-    color: '#fff',
-    fontSize: 22,
-    fontWeight: '900',
   },
   sumResultArea: {
     alignItems: 'center',
