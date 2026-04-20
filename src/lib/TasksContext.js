@@ -64,7 +64,6 @@ export function isSameDay(d1, d2) {
 
 export function calculateTaskMissedStreak(history = {}, dayStartTime = 6) {
   const today = new Date();
-  // Adjust "today" for the streak calculation if we haven't hit dayStartTime yet
   if (today.getHours() < dayStartTime) {
     today.setDate(today.getDate() - 1);
   }
@@ -77,7 +76,6 @@ export function calculateTaskMissedStreak(history = {}, dayStartTime = 6) {
     const key = getLocalDateKey(d);
     const s = history[key];
     
-    // If today is not marked yet, we don't count it for MISSED streak yet
     if (i === 0 && !s) continue;
 
     if (s === 'missed') {
@@ -91,7 +89,6 @@ export function calculateTaskMissedStreak(history = {}, dayStartTime = 6) {
 
 export function calculateTaskStreak(history = {}, dayStartTime = 6) {
   const today = new Date();
-  // Adjust "today" for the streak calculation if we haven't hit dayStartTime yet
   if (today.getHours() < dayStartTime) {
     today.setDate(today.getDate() - 1);
   }
@@ -104,7 +101,6 @@ export function calculateTaskStreak(history = {}, dayStartTime = 6) {
     const key = getLocalDateKey(d);
     const s = history[key];
     
-    // If today is not marked yet, we don't count it for streak yet
     if (i === 0 && !s) continue;
 
     if (s === 'done' || s === 'did_my_best') {

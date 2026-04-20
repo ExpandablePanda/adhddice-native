@@ -4,7 +4,7 @@ import {
   TextInput, FlatList, Alert, ScrollView,
   KeyboardAvoidingView, Platform, Dimensions, Animated,
 } from 'react-native';
-import { Audio } from 'expo-av';
+import { useAudioPlayer } from 'expo-audio';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -1009,31 +1009,10 @@ function FocusRewardModal({ visible, minutes, basePoints, onClose, onClaim }) {
   const [step, setStep] = useState('offer'); // offer | rolling | result
   const [roll, setRoll] = useState(null);
   const spinVal = useRef(new Animated.Value(0)).current;
-  const rollSoundRef = useRef(null);
+  const rollPlayer = useAudioPlayer(require('../../assets/dice-roll.wav'));
 
-  useEffect(() => {
-    async function loadSound() {
-      try {
-        const { sound } = await Audio.Sound.createAsync(require('../../assets/dice-roll.wav'));
-        rollSoundRef.current = sound;
-      } catch (e) {
-        console.log('Failed to load dice-roll sound', e);
-      }
-    }
-    loadSound();
-    return () => {
-      if (rollSoundRef.current) {
-        rollSoundRef.current.unloadAsync();
-      }
-    };
-  }, []);
-
-  async function playRollSound() {
-    try {
-      if (rollSoundRef.current) {
-        await rollSoundRef.current.replayAsync();
-      }
-    } catch (e) { }
+  function playRollSound() {
+    rollPlayer.play();
   }
 
   useEffect(() => {
@@ -1141,8 +1120,8 @@ function UnproductivePenaltyModal({ visible, minutes, baseDeduction, onClose, on
     return () => { if (rollSoundRef.current) rollSoundRef.current.unloadAsync(); };
   }, []);
 
-  async function playRollSound() {
-    try { if (rollSoundRef.current) await rollSoundRef.current.replayAsync(); } catch (e) { }
+  function playRollSound() {
+    try { rollPlayer.seekTo(0); rollPlayer.play(); } catch (e) { }
   }
 
   useEffect(() => {

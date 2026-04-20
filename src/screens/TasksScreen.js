@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Audio } from 'expo-av';
+import { useAudioPlayer } from 'expo-audio';
 import { Ionicons } from '@expo/vector-icons';
 import { Dimensions } from 'react-native';
 import { useTasks, getLocalDateKey, getAppDayKey, calculateTaskStreak, calculateTaskMissedStreak, STATUSES, STATUS_ORDER, mapSubtasks, calcNextDueDate } from '../lib/TasksContext';
@@ -46,6 +46,7 @@ const VIEWS = [
 ];
 
 // ── ID helpers ────────────────────────────────────────────────────────────────
+const generateId = () => Date.now().toString() + Math.random().toString(36).substr(2, 9);
 const newSubtask  = title => ({ id: generateId(), title, status: 'pending', subtasks: [] });
 const BLANK       = () => ({ id: null, title: '', status: 'pending', energy: null, dueDate: '', tags: [], subtasks: [], streak: 0, isPriority: false, isUrgent: false, statusHistory: {}, frequencyDays: null, estimatedMinutes: null, weeklyDay: null, weeklyMode: null });
 function toggleById(subtasks, id, targetStatus) {
@@ -683,7 +684,11 @@ function TaskHistoryModal({ task, taskHistory = [], onClose, onUpdateHistory, on
 // LIST VIEW
 // ═════════════════════════════════════════════════════════════════════════════
 
-function TaskRow({ task, onConfirmStatus, onOpen, onHistory, onDeprioritize, onViewNote, selectedSubtasks = {}, onToggleSubselect, onBulkSubtaskStatus }) {
+function TaskRow({ 
+  task, onConfirmStatus, onOpen, onHistory, onDeprioritize, onViewNote, 
+  selectedSubtasks = {}, onToggleSubselect, onBulkSubtaskStatus,
+  selectionMode, isSelected, onToggleSelection, onStartSelectionMode
+}) {
   const [showStatusPicker, setShowStatusPicker] = useState(false);
   const [expanded, setExpanded] = useState(true);
   const [openSubPickers, setOpenSubPickers] = useState(new Set()); // Set of subtask IDs with pickers open
@@ -709,9 +714,32 @@ function TaskRow({ task, onConfirmStatus, onOpen, onHistory, onDeprioritize, onV
       <TouchableOpacity
         style={styles.row}
         activeOpacity={0.6}
-        onPress={() => { if (showStatusPicker) { setShowStatusPicker(false); } else { onOpen(task); } }}
+        onPress={() => { 
+          if (selectionMode) {
+            onToggleSelection(task.id);
+          } else if (showStatusPicker) { 
+            setShowStatusPicker(false); 
+          } else { 
+            onOpen(task); 
+          }
+        }}
+        onLongPress={() => {
+          if (!selectionMode) {
+            onStartSelectionMode(task.id);
+          }
+        }}
+        delayLongPress={350}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {selectionMode && (
+            <TouchableOpacity onPress={() => onToggleSelection(task.id)} style={{ marginRight: 12 }}>
+              <Ionicons 
+                name={isSelected ? "checkbox" : "square-outline"} 
+                size={22} 
+                color={isSelected ? "#6366f1" : "#d1d5db"} 
+              />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity onPress={(e) => { e.stopPropagation(); setShowStatusPicker(s => !s); }} style={styles.dotWrap} hitSlop={8}>
             <View style={[styles.dot, { backgroundColor: status?.color || '#cbd5e1' }]} />
             {task.isUrgent && task.status !== 'done' && (
@@ -937,7 +965,7 @@ function SectionHeader({ title, status, count, collapsed, onToggle }) {
 // CARD VIEW
 // ═════════════════════════════════════════════════════════════════════════════
 
-function TaskCard({ task, onConfirmStatus, onOpen, onHistory, isFlipped, onFlipCard, onViewNote }) {
+function TaskCard({ task, onConfirmStatus, onOpen, onHistory, isFlipped, onFlipCard, onViewNote, selectionMode, isSelected, onToggleSelection }) {
   const [stagedStatus, setStagedStatus] = useState(null);
   const flipAnim = useRef(new Animated.Value(isFlipped ? 1 : 0)).current;
   const { notes } = useNotes();
@@ -986,7 +1014,33 @@ function TaskCard({ task, onConfirmStatus, onOpen, onHistory, isFlipped, onFlipC
 
       {/* Card Front */}
       <Animated.View style={{ transform: [{ rotateY: frontRotate }], opacity: frontOpacity }}>
-    <TouchableOpacity style={[styles.card, { borderColor: status?.color || '#cbd5e1', backgroundColor: status?.color || '#ffffff' }]} activeOpacity={0.75} onPress={() => onOpen(task)}>
+    <TouchableOpacity 
+      style={[
+        styles.card, 
+        { borderColor: status?.color || '#cbd5e1', backgroundColor: status?.color || '#ffffff' },
+        isSelected && { borderWidth: 3, borderColor: '#fff' }
+      ]} 
+      activeOpacity={0.75} 
+      onPress={() => {
+        if (selectionMode) {
+          onToggleSelection(task.id);
+        } else {
+          onOpen(task);
+        }
+      }}
+    >
+      {selectionMode && (
+        <TouchableOpacity 
+          style={{ position: 'absolute', top: 10, right: 10, zIndex: 20 }}
+          onPress={() => onToggleSelection(task.id)}
+        >
+          <Ionicons 
+            name={isSelected ? "checkbox" : "square-outline"} 
+            size={24} 
+            color="#fff" 
+          />
+        </TouchableOpacity>
+      )}
 
       {/* Top-left corner — status (like a card rank) */}
       <View style={{ flexDirection: 'row' }}>
@@ -1211,7 +1265,7 @@ function SubtaskItem({ subtask, depth, onToggle, onDelete, onReorder, onAddChild
 function TaskDetailModal({ task, onSave, onDelete, onClose, onViewNote }) {
   const { top } = useSafeAreaInsets();
   const { tasks: allTasks } = useTasks();
-  const existingTags = Array.from(new Set(allTasks.flatMap(t => t.tags || []))).filter(Boolean);
+  const existingTags = Array.from(new Set(allTasks.flatMap(t => t.tags || []))).filter(Boolean).sort((a, b) => a.localeCompare(b));
   const is1stStep = task.is1stStepTrigger;
   const initialState = { 
     ...task, 
@@ -1801,6 +1855,303 @@ function TaskDetailModal({ task, onSave, onDelete, onClose, onViewNote }) {
         initialTime={draft.dueTime}
         onSelect={(time) => { field('dueTime', time); setTimeOpen(false); }}
       />
+    </Modal>
+  );
+}
+
+const FieldOption = ({ id, label, children, icon, activeFields, onToggle, styles }) => (
+  <View style={[styles.bulkFieldRow, activeFields.has(id) && { backgroundColor: '#f5f3ff', borderColor: '#ddd6fe' }]}>
+    <TouchableOpacity 
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 }}
+      onPress={() => onToggle(id)}
+    >
+      <Ionicons 
+        name={activeFields.has(id) ? "checkbox" : "square-outline"} 
+        size={20} 
+        color={activeFields.has(id) ? "#6366f1" : "#d1d5db"} 
+      />
+      <Ionicons name={icon} size={18} color="#6b7280" />
+      <Text style={[styles.bulkFieldLabel, activeFields.has(id) && { color: '#6366f1', fontWeight: '700' }]}>{label}</Text>
+    </TouchableOpacity>
+    {activeFields.has(id) && (
+      <View style={{ paddingLeft: 30, paddingBottom: 12 }}>
+        {children}
+      </View>
+    )}
+  </View>
+);
+
+function BulkEditModal({ visible, onClose, onSave, allTasks, selectedIds }) {
+  const { top } = useSafeAreaInsets();
+  const [updates, setUpdates] = useState({
+    energy: null,
+    frequency: null,
+    frequencyDays: null,
+    estimatedMinutes: null,
+    dueDate: '',
+    dueTime: '',
+    addTags: [],
+    removeTags: []
+  });
+  const [activeFields, setActiveFields] = useState(new Set());
+  const [calOpen, setCalOpen] = useState(false);
+  const [timeOpen, setTimeOpen] = useState(false);
+  const [tagInput, setTagInput] = useState('');
+  const [tagMode, setTagMode] = useState('add'); // 'add' | 'remove'
+  const [showExistingTagMenu, setShowExistingTagMenu] = useState(false);
+  
+  const existingTags = Array.from(new Set(allTasks.flatMap(t => t.tags || []))).filter(Boolean).sort((a, b) => a.localeCompare(b));
+
+  const toggleField = (f) => {
+    setActiveFields(prev => {
+      const next = new Set(prev);
+      if (next.has(f)) next.delete(f);
+      else next.add(f);
+      return next;
+    });
+  };
+
+  const handleSave = () => {
+    const finalUpdates = {};
+    activeFields.forEach(f => {
+      if (f === 'tags') {
+        finalUpdates.addTags = updates.addTags;
+        finalUpdates.removeTags = updates.removeTags;
+      } else {
+        finalUpdates[f] = updates[f];
+        if (f === 'frequency' && updates.frequency === 'DaysAfter') {
+          finalUpdates.frequencyDays = updates.frequencyDays;
+        }
+      }
+    });
+    onSave(finalUpdates);
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide">
+      <View style={[styles.detailScreen, { paddingTop: top }]}>
+        <View style={styles.detailHeader}>
+          <TouchableOpacity onPress={onClose} style={styles.iconBtn}><Ionicons name="close" size={22} color="#6b7280" /></TouchableOpacity>
+          <Text style={styles.detailHeaderTitle}>Bulk Edit</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <ScrollView contentContainerStyle={styles.detailBody}>
+          <Text style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>Select fields to apply changes to all selected tasks.</Text>
+
+          {/* Energy */}
+          <FieldOption id="energy" label="Energy Level" icon="flash-outline" activeFields={activeFields} onToggle={toggleField} styles={styles}>
+            <View style={styles.chipGroup}>
+              {Object.entries(ENERGY).map(([key, cfg]) => (
+                <TouchableOpacity
+                  key={key}
+                  style={[styles.optChip, updates.energy === key && { backgroundColor: cfg.color, borderColor: cfg.color }]}
+                  onPress={() => setUpdates(u => ({ ...u, energy: key }))}
+                >
+                  <Text style={[styles.optChipText, updates.energy === key && { color: '#fff' }]}>{cfg.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </FieldOption>
+
+          {/* Frequency */}
+          <FieldOption id="frequency" label="Repeat Frequency" icon="repeat-outline" activeFields={activeFields} onToggle={toggleField} styles={styles}>
+            <View style={styles.chipGroup}>
+              {['None', 'Daily', 'Weekly', 'Monthly', 'Yearly', 'Days After'].map(freq => {
+                const internal = freq === 'Days After' ? 'DaysAfter' : (freq === 'None' ? null : freq);
+                const active = updates.frequency === internal;
+                return (
+                  <TouchableOpacity
+                    key={freq}
+                    style={[styles.optChip, active && { backgroundColor: '#6366f1', borderColor: '#6366f1' }]}
+                    onPress={() => setUpdates(u => ({ ...u, frequency: internal }))}
+                  >
+                    <Text style={[styles.optChipText, active && { color: '#fff' }]}>{freq}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {updates.frequency === 'DaysAfter' && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
+                <Text style={{ fontSize: 13, color: '#374151' }}>Every</Text>
+                <TextInput
+                  style={[styles.fieldInput, { width: 50, textAlign: 'center' }]}
+                  keyboardType="number-pad"
+                  value={String(updates.frequencyDays || '')}
+                  onChangeText={v => setUpdates(u => ({ ...u, frequencyDays: parseInt(v, 10) || null }))}
+                />
+                <Text style={{ fontSize: 13, color: '#374151' }}>days</Text>
+              </View>
+            )}
+          </FieldOption>
+
+          {/* Time & Date */}
+          <FieldOption id="dueDate" label="Due Date" icon="calendar-outline" activeFields={activeFields} onToggle={toggleField} styles={styles}>
+            <TouchableOpacity onPress={() => setCalOpen(true)}>
+              <TextInput 
+                style={styles.fieldInput} 
+                placeholder="Select Date" 
+                value={updates.dueDate} 
+                editable={false} 
+                pointerEvents="none" 
+              />
+            </TouchableOpacity>
+          </FieldOption>
+
+          <FieldOption id="dueTime" label="Due Time" icon="time-outline" activeFields={activeFields} onToggle={toggleField} styles={styles}>
+            <TouchableOpacity onPress={() => setTimeOpen(true)}>
+              <TextInput 
+                style={styles.fieldInput} 
+                placeholder="Select Time" 
+                value={updates.dueTime} 
+                editable={false} 
+                pointerEvents="none" 
+              />
+            </TouchableOpacity>
+          </FieldOption>
+
+          {/* Estimated Time */}
+          <FieldOption id="estimatedMinutes" label="Estimated Time" icon="hourglass-outline" activeFields={activeFields} onToggle={toggleField} styles={styles}>
+            <View style={styles.chipGroup}>
+              {[5, 10, 15, 30, 45, 60, 90, 120].map(m => (
+                <TouchableOpacity
+                  key={m}
+                  style={[styles.optChip, updates.estimatedMinutes === m && { backgroundColor: '#6366f1', borderColor: '#6366f1' }]}
+                  onPress={() => setUpdates(u => ({ ...u, estimatedMinutes: m }))}
+                >
+                  <Text style={[styles.optChipText, updates.estimatedMinutes === m && { color: '#fff' }]}>{m >= 60 ? `${m/60}h` : `${m}m`}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </FieldOption>
+
+          {/* Tags */}
+          <FieldOption id="tags" label="Tags (Add/Remove)" icon="pricetags-outline" activeFields={activeFields} onToggle={toggleField} styles={styles}>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+              <TouchableOpacity 
+                style={[styles.tagToggle, tagMode === 'add' && styles.tagToggleActive]} 
+                onPress={() => setTagMode('add')}
+              >
+                <Ionicons name="add-circle" size={14} color={tagMode === 'add' ? '#fff' : '#6366f1'} />
+                <Text style={[styles.tagToggleText, tagMode === 'add' && styles.tagToggleTextActive]}>Add</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.tagToggle, tagMode === 'remove' && styles.tagToggleActive]} 
+                onPress={() => setTagMode('remove')}
+              >
+                <Ionicons name="remove-circle" size={14} color={tagMode === 'remove' ? '#fff' : '#6366f1'} />
+                <Text style={[styles.tagToggleText, tagMode === 'remove' && styles.tagToggleTextActive]}>Remove</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.chipGroup}>
+              {(tagMode === 'add' ? updates.addTags : updates.removeTags).map(t => (
+                <TouchableOpacity 
+                  key={t} 
+                  style={[styles.optChip, { backgroundColor: tagMode === 'add' ? '#dcfce7' : '#fee2e2', borderColor: tagMode === 'add' ? '#10b981' : '#ef4444' }]}
+                  onPress={() => setUpdates(u => ({
+                    ...u,
+                    [tagMode === 'add' ? 'addTags' : 'removeTags']: u[tagMode === 'add' ? 'addTags' : 'removeTags'].filter(x => x !== t)
+                  }))}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: tagMode === 'add' ? '#059669' : '#b91c1c' }}>{tagMode === 'add' ? '+' : '-'} {t}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Existing Tags Chip Menu */}
+            {existingTags.length > 0 && (
+              <View style={{ marginVertical: 8 }}>
+                <TouchableOpacity
+                  style={[styles.tagToggle, { alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 14, marginBottom: showExistingTagMenu ? 8 : 0 }]}
+                  onPress={() => setShowExistingTagMenu(s => !s)}
+                >
+                  <Ionicons name="pricetags-outline" size={13} color={showExistingTagMenu ? '#fff' : '#6366f1'} />
+                  <Text style={[styles.tagToggleText, showExistingTagMenu && { color: '#fff' }]}>Existing Tags</Text>
+                  <Ionicons name={showExistingTagMenu ? 'chevron-up' : 'chevron-down'} size={12} color={showExistingTagMenu ? '#fff' : '#6366f1'} />
+                </TouchableOpacity>
+                {showExistingTagMenu && (
+                  <View style={[styles.chipGroup, { backgroundColor: '#f8fafc', padding: 10, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0' }]}>
+                    {existingTags
+                      .filter(t => !(tagMode === 'add' ? updates.addTags : updates.removeTags).includes(t))
+                      .map(t => (
+                        <TouchableOpacity
+                          key={t}
+                          style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, borderWidth: 1, borderColor: '#ddd6fe', backgroundColor: '#f5f3ff' }}
+                          onPress={() => {
+                            setUpdates(u => ({
+                              ...u,
+                              [tagMode === 'add' ? 'addTags' : 'removeTags']: Array.from(new Set([...u[tagMode === 'add' ? 'addTags' : 'removeTags'], t]))
+                            }));
+                          }}
+                        >
+                          <Text style={{ fontSize: 12, color: '#7c3aed', fontWeight: '600' }}>+ #{t}</Text>
+                        </TouchableOpacity>
+                      ))}
+                  </View>
+                )}
+              </View>
+            )}
+
+            <View style={{ position: 'relative', zIndex: 10 }}>
+              <TextInput
+                style={styles.fieldInput}
+                placeholder={`Type tag to ${tagMode}...`}
+                value={tagInput}
+                onChangeText={setTagInput}
+                onSubmitEditing={() => {
+                  const t = tagInput.trim();
+                  if (t) {
+                    setUpdates(u => ({
+                      ...u,
+                      [tagMode === 'add' ? 'addTags' : 'removeTags']: Array.from(new Set([...u[tagMode === 'add' ? 'addTags' : 'removeTags'], t]))
+                    }));
+                    setTagInput('');
+                  }
+                }}
+              />
+              {tagInput.trim().length > 0 && (
+                <View style={[styles.autocompleteDrop, { maxHeight: 150 }]}>
+                  <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                    {existingTags
+                      .filter(t => t.toLowerCase().includes(tagInput.toLowerCase()) && !(tagMode === 'add' ? updates.addTags : updates.removeTags).includes(t))
+                      .map(t => (
+                        <TouchableOpacity 
+                          key={t} 
+                          style={styles.autocompleteItem}
+                          onPress={() => {
+                            setUpdates(u => ({
+                              ...u,
+                              [tagMode === 'add' ? 'addTags' : 'removeTags']: Array.from(new Set([...u[tagMode === 'add' ? 'addTags' : 'removeTags'], t]))
+                            }));
+                            setTagInput('');
+                          }}
+                        >
+                          <Text style={styles.autocompleteText}># {t}</Text>
+                        </TouchableOpacity>
+                      ))}
+                  </ScrollView>
+                </View>
+              )}
+            </View>
+          </FieldOption>
+
+          <View style={{ height: 100 }} />
+        </ScrollView>
+
+        <View style={styles.detailFooter}>
+          <TouchableOpacity 
+            style={[styles.saveBtn, activeFields.size === 0 && { opacity: 0.5 }]} 
+            onPress={handleSave}
+            disabled={activeFields.size === 0}
+          >
+            <Text style={styles.saveText}>Apply to {selectedIds.size} Tasks</Text>
+          </TouchableOpacity>
+        </View>
+
+        <CalendarModal visible={calOpen} onClose={() => setCalOpen(false)} onSelect={v => { setUpdates(u => ({ ...u, dueDate: v })); setCalOpen(false); }} />
+        <TimePickerModal visible={timeOpen} onClose={() => setTimeOpen(false)} initialTime={updates.dueTime} onSelect={v => { setUpdates(u => ({ ...u, dueTime: v })); setTimeOpen(false); }} />
+      </View>
     </Modal>
   );
 }
@@ -2424,51 +2775,20 @@ export default function TasksScreen() {
   };
   const { economy, spendPoints, addFreeRoll, addXP, addReward, removeReward, incrementActiveStreak, incrementMissedStreak, addBankedReward, claimBankedRewards } = useEconomy();
   
-  // Audio — use ref to avoid stale-closure unload bug
-  const shuffleSoundRef = useRef(null);
-  const flipSoundRef = useRef(null);
+  const shufflePlayer = useAudioPlayer(require('../../assets/card-shuffle.mp3'));
+  const flipPlayer = useAudioPlayer(require('../../assets/card-flip.mp3'));
 
-  useEffect(() => {
-    async function setupAudio() {
-      try {
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: false,
-          shouldDuckAndroid: true,
-        });
-        // Pre-load flip sound so it fires instantly on first tap
-        const { sound: flip } = await Audio.Sound.createAsync(require('../../assets/card-flip.mp3'));
-        flipSoundRef.current = flip;
-      } catch (e) {}
-    }
-    setupAudio();
-    return () => {
-      if (shuffleSoundRef.current) shuffleSoundRef.current.unloadAsync();
-      if (flipSoundRef.current) flipSoundRef.current.unloadAsync();
-    };
-  }, []);
-
-  async function playShuffleSound() {
+  function playShuffleSound() {
     try {
-      if (shuffleSoundRef.current) {
-        await shuffleSoundRef.current.replayAsync();
-      } else {
-        const { sound } = await Audio.Sound.createAsync(require('../../assets/card-shuffle.mp3'));
-        shuffleSoundRef.current = sound;
-        await sound.playAsync();
-      }
+      shufflePlayer.seekTo(0);
+      shufflePlayer.play();
     } catch (e) {}
   }
 
-  async function playFlipSound() {
+  function playFlipSound() {
     try {
-      if (flipSoundRef.current) {
-        await flipSoundRef.current.replayAsync();
-      } else {
-        const { sound } = await Audio.Sound.createAsync(require('../../assets/card-flip.mp3'));
-        flipSoundRef.current = sound;
-        await sound.playAsync();
-      }
+      flipPlayer.seekTo(0);
+      flipPlayer.play();
     } catch (e) {}
   }
 
@@ -2487,6 +2807,55 @@ export default function TasksScreen() {
   
   const [showMorningStart, setShowMorningStart] = useState(false);
   const [forceFocusOpen, setForceFocusOpen] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkEditVisible, setBulkEditVisible] = useState(false);
+  
+  const toggleTaskSelection = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+    setSelectionMode(false);
+  };
+
+  const handleBulkUpdate = (updates) => {
+    const { addTags = [], removeTags = [], ...scalars } = updates;
+    setTasks(prev => prev.map(t => {
+      if (!selectedIds.has(t.id)) return t;
+      let newTags = [...(t.tags || [])];
+      if (addTags.length) {
+        addTags.forEach(tag => { if (!newTags.includes(tag)) newTags.push(tag); });
+      }
+      if (removeTags.length) {
+        newTags = newTags.filter(tag => !removeTags.includes(tag));
+      }
+      return { ...t, ...scalars, tags: newTags };
+    }));
+    clearSelection();
+    setBulkEditVisible(false);
+  };
+
+  const confirmBulkDelete = () => {
+    const count = selectedIds.size;
+    Alert.alert(
+      "Delete Multiple Tasks",
+      `Are you sure you want to delete ${count} selected tasks? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete All", style: "destructive", onPress: () => {
+          setTasks(prev => prev.filter(t => !selectedIds.has(t.id)));
+          clearSelection();
+        }}
+      ]
+    );
+  };
 
   // Check for Morning Start UI (Enforced Window: dayStartTime to 11 AM)
   const checkMorning = React.useCallback(async () => {
@@ -2591,7 +2960,7 @@ export default function TasksScreen() {
     upcoming: tasks.filter(t => t.status === 'upcoming').length,
   };
 
-  const allTags = Array.from(new Set(tasks.flatMap(t => (t.tags || []))));
+  const allTags = Array.from(new Set(tasks.flatMap(t => (t.tags || [])))).sort((a, b) => a.localeCompare(b));
 
   // Pipeline Filter logic
   let filtered = tasks;
@@ -3029,6 +3398,15 @@ export default function TasksScreen() {
           <TouchableOpacity style={styles.iconBtn} onPress={() => setShowSearch(s => !s)}>
             <Ionicons name="search-outline" size={19} color={showSearch ? '#6366f1' : '#6b7280'} />
           </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.iconBtn, selectionMode && { backgroundColor: '#6366f120', borderRadius: 8 }]} 
+            onPress={() => {
+              if (selectionMode) clearSelection();
+              else setSelectionMode(true);
+            }}
+          >
+            <Ionicons name={selectionMode ? "checkmark-circle" : "list-outline"} size={20} color={selectionMode ? '#6366f1' : '#6b7280'} />
+          </TouchableOpacity>
           <TouchableOpacity style={styles.iconBtn} onPress={() => setImportVisible(true)}>
             <Ionicons name="download-outline" size={19} color="#6b7280" />
           </TouchableOpacity>
@@ -3275,13 +3653,19 @@ export default function TasksScreen() {
                 <TaskRow 
                   key={String(item.id) + '-' + i} 
                   task={item} 
-                  dayStartTime={dayStartTime}
                   onConfirmStatus={confirmStatus} 
                   onOpen={setEditingTask} 
                   onHistory={t => setHistoryTask(t.id)} 
                   onDeprioritize={(id) => setTasks(prev => prev.map(t => t.id === id ? { ...t, isPriority: false } : t))} 
                   onViewNote={setViewingNote}
                   selectedSubtasks={selectedSubtasks}
+                  selectionMode={selectionMode}
+                  isSelected={selectedIds.has(item.id)}
+                  onToggleSelection={toggleTaskSelection}
+                  onStartSelectionMode={(id) => {
+                    setSelectionMode(true);
+                    toggleTaskSelection(id);
+                  }}
                   onToggleSubselect={(tid, sid) => {
                     setSelectedSubtasks(prev => {
                       const next = { ...prev };
@@ -3307,13 +3691,19 @@ export default function TasksScreen() {
                     <TaskRow 
                       key={String(item.id) + '-' + i} 
                       task={item} 
-                      dayStartTime={dayStartTime}
                       onConfirmStatus={confirmStatus} 
                       onOpen={setEditingTask} 
                       onHistory={t => setHistoryTask(t.id)} 
                       onDeprioritize={(id) => setTasks(prev => prev.map(t => t.id === id ? { ...t, isPriority: false } : t))} 
                       onViewNote={setViewingNote} 
                       selectedSubtasks={selectedSubtasks}
+                      selectionMode={selectionMode}
+                      isSelected={selectedIds.has(item.id)}
+                      onToggleSelection={toggleTaskSelection}
+                      onStartSelectionMode={(id) => {
+                        setSelectionMode(true);
+                        toggleTaskSelection(id);
+                      }}
                       onToggleSubselect={(tid, sid) => {
                         setSelectedSubtasks(prev => {
                           const next = { ...prev };
@@ -3336,12 +3726,53 @@ export default function TasksScreen() {
           ? <Text style={styles.empty}>No tasks — tap New or import.</Text>
           : <View style={styles.cardGrid}>
               {filtered.map((item, i) => (
-                <TaskCard key={String(item.id) + '-' + i} task={item} onConfirmStatus={confirmStatus} onOpen={setEditingTask} onHistory={t => setHistoryTask(t.id)} isFlipped={flippedCards.has(item.id)} onFlipCard={flipCard} onViewNote={setViewingNote} />
+                <TaskCard 
+                  key={String(item.id) + '-' + i} 
+                  task={item} 
+                  onConfirmStatus={confirmStatus} 
+                  onOpen={setEditingTask} 
+                  onHistory={t => setHistoryTask(t.id)} 
+                  isFlipped={flippedCards.has(item.id)} 
+                  onFlipCard={flipCard} 
+                  onViewNote={setViewingNote}
+                  selectionMode={selectionMode}
+                  isSelected={selectedIds.has(item.id)}
+                  onToggleSelection={toggleTaskSelection}
+                />
               ))}
             </View>
       )}
 
       </ScrollView>
+
+      {/* ── Bulk Action Bar (Sticky Footer) ── */}
+      {selectionMode && selectedIds.size > 0 && (
+        <View style={styles.bulkActionBar}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <TouchableOpacity 
+              style={styles.bulkClearBtn} 
+              onPress={clearSelection}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="close" size={18} color="#6b7280" />
+            </TouchableOpacity>
+            <View>
+              <Text style={styles.bulkActionCount}>{selectedIds.size}</Text>
+              <Text style={styles.bulkActionSub}>Selected</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity style={[styles.bulkActionBtn, { backgroundColor: '#fee2e2' }]} onPress={confirmBulkDelete}>
+              <Ionicons name="trash-outline" size={18} color="#ef4444" />
+              <Text style={[styles.bulkActionText, { color: '#ef4444' }]}>Delete</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.bulkActionBtn, { backgroundColor: '#6366f1' }]} onPress={() => setBulkEditVisible(true)}>
+              <Ionicons name="create-outline" size={18} color="#fff" />
+              <Text style={[styles.bulkActionText, { color: '#fff' }]}>Edit</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {/* Detail modal — derive live task so it stays in sync with history edits */}
       {editingTask && (() => {
@@ -3359,6 +3790,15 @@ export default function TasksScreen() {
 
       {/* Import modal */}
       <ImportModal visible={importVisible} onClose={() => setImportVisible(false)} onImport={importTasks} />
+
+      {/* Bulk Edit Modal */}
+      <BulkEditModal 
+        visible={bulkEditVisible} 
+        onClose={() => setBulkEditVisible(false)} 
+        onSave={handleBulkUpdate} 
+        allTasks={tasks} 
+        selectedIds={selectedIds}
+      />
 
       {/* Shuffle modal */}
       {shuffleTask && (
@@ -3850,6 +4290,75 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+
+  // Bulk Actions
+  bulkActionBar: {
+    position: 'absolute',
+    bottom: 30,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
+    zIndex: 1000,
+  },
+  bulkClearBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bulkActionCount: { fontSize: 17, fontWeight: '900', color: '#111827', lineHeight: 19 },
+  bulkActionSub: { fontSize: 9, fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', letterSpacing: 1 },
+  bulkActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+  },
+  bulkActionText: { fontSize: 14, fontWeight: '800', color: '#4b5563' },
+  bulkFieldRow: {
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: '#fff',
+  },
+  bulkFieldLabel: { fontSize: 14, color: '#334155', fontWeight: '700' },
+  tagToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  tagToggleActive: { backgroundColor: '#6366f1', borderColor: '#4f46e5' },
+  tagToggleText: { fontSize: 13, color: '#64748b', fontWeight: '800' },
+  tagToggleTextActive: { color: '#fff' },
+
+  saveBtn:       { backgroundColor: '#6366f1', padding: 16, borderRadius: 16, alignItems: 'center', marginTop: 12 },
+  saveText:      { color: '#fff', fontSize: 16, fontWeight: '800' },
+  detailFooter:  { padding: 24, borderTopWidth: 1, borderTopColor: '#f1f5f9', backgroundColor: '#fff' },
 });
 
 function ViewNoteModal({ note: initialNote, isNew, taskId, onClose }) {

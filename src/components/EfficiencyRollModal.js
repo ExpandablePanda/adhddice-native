@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, Animated, Easing, ScrollView, Platform } from 'react-native';
-import { Audio } from 'expo-av';
+import { useAudioPlayer } from 'expo-audio';
 import { Ionicons } from '@expo/vector-icons';
 import { useEconomy } from '../lib/EconomyContext';
 import ModalScreen from './ModalScreen';
@@ -13,22 +13,12 @@ export default function EfficiencyRollModal({ visible, rolls, onClose, onFinish 
   const [multiplier, setMultiplier] = useState(1);
   const [revealedCount, setRevealedCount] = useState(0);
   const [isRollingCurrent, setIsRollingCurrent] = useState(false);
-  const rollSoundRef = useRef(null);
+  const rollPlayer = useAudioPlayer(require('../../assets/dice-roll.wav'));
 
-  useEffect(() => {
-    async function setupAudio() {
-      try {
-        const { sound } = await Audio.Sound.createAsync(require('../../assets/dice-roll.wav'));
-        rollSoundRef.current = sound;
-      } catch (e) {}
-    }
-    setupAudio();
-    return () => { if (rollSoundRef.current) rollSoundRef.current.unloadAsync(); };
-  }, []);
-
-  async function playRollSound() {
+  function playRollSound() {
     try {
-      if (rollSoundRef.current) await rollSoundRef.current.replayAsync();
+      rollPlayer.seekTo(0);
+      rollPlayer.play();
     } catch (e) {}
   }
 

@@ -359,6 +359,20 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
+        <Text style={styles.sectionLabel}>Credits & License</Text>
+        <View style={styles.card}>
+          <View style={[styles.cardRow, styles.cardRowLast]}>
+            <View style={[styles.iconBox, { backgroundColor: '#f3f4f6' }]}>
+              <Ionicons name="cube-outline" size={20} color={colors.textPrimary} />
+            </View>
+            <View style={styles.rowBody}>
+              <Text style={styles.rowTitle}>3D Dice Model</Text>
+              <Text style={styles.rowDesc}>"D20 Dice" by VertexDon</Text>
+              <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>Licensed under CC BY-SA 4.0</Text>
+            </View>
+          </View>
+        </View>
+
         <Text style={[styles.sectionLabel, { textAlign: 'center', marginTop: 40, color: colors.textMuted }]}>
           {APP_VERSION}{'\n'}Local Storage Build
         </Text>

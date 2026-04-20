@@ -5,7 +5,7 @@ import {
   ScrollView, KeyboardAvoidingView, Platform,
   Dimensions,
 } from 'react-native';
-import { Audio } from 'expo-av';
+import { useAudioPlayer } from 'expo-audio';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,7 +18,7 @@ import { useTasks } from '../lib/TasksContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ScrollToTop from '../components/ScrollToTop';
 import ModalScreen from '../components/ModalScreen';
-import EfficiencyRollModal from '../components/EfficiencyRollModal';
+import Dice3D from '../components/Dice3D';
 
 const SCREEN_W = Dimensions.get('window').width;
 
@@ -78,73 +78,12 @@ function generateDailyPool(pools) {
   };
 }
 
-// ── D20 SVG-like shape drawn with View transforms ───────────────────────────
-function D20Shape({ size, color, glowColor }) {
-  const half = size / 2;
-  return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      {/* Outer diamond — rotated square */}
-      <View style={{
-        width: size * 0.82,
-        height: size * 0.82,
-        transform: [{ rotate: '45deg' }],
-        backgroundColor: color,
-        borderRadius: size * 0.08,
-        position: 'absolute',
-        shadowColor: glowColor,
-        shadowOpacity: 0.6,
-        shadowRadius: 30,
-        shadowOffset: { width: 0, height: 0 },
-        elevation: 20,
-      }} />
-      {/* Inner top triangle illusion */}
-      <View style={{
-        width: 0, height: 0,
-        borderLeftWidth: half * 0.55,
-        borderRightWidth: half * 0.55,
-        borderBottomWidth: half * 0.65,
-        borderLeftColor: 'transparent',
-        borderRightColor: 'transparent',
-        borderBottomColor: 'rgba(255,255,255,0.08)',
-        position: 'absolute',
-        top: size * 0.18,
-      }} />
-      {/* Bottom inverted triangle */}
-      <View style={{
-        width: 0, height: 0,
-        borderLeftWidth: half * 0.55,
-        borderRightWidth: half * 0.55,
-        borderTopWidth: half * 0.65,
-        borderLeftColor: 'transparent',
-        borderRightColor: 'transparent',
-        borderTopColor: 'rgba(255,255,255,0.04)',
-        position: 'absolute',
-        bottom: size * 0.18,
-      }} />
-      {/* Diagonal lines */}
-      <View style={{
-        position: 'absolute', width: size * 0.6, height: 1.5,
-        backgroundColor: 'rgba(255,255,255,0.12)',
-        transform: [{ rotate: '30deg' }],
-      }} />
-      <View style={{
-        position: 'absolute', width: size * 0.6, height: 1.5,
-        backgroundColor: 'rgba(255,255,255,0.12)',
-        transform: [{ rotate: '-30deg' }],
-      }} />
-      <View style={{
-        position: 'absolute', width: 1.5, height: size * 0.45,
-        backgroundColor: 'rgba(255,255,255,0.1)',
-      }} />
-    </View>
-  );
-}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // PRIZE MANAGER MODAL
 // ═════════════════════════════════════════════════════════════════════════════
 
-function PrizeManagerModal({ visible, pools, onSave, onClose }) {
+function PrizeManagerModal({ visible, pools, onSave, onClose, onDevWipe }) {
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState({ master: [], small: [], big: [] });
   const [activeTab, setActiveTab] = useState('small'); // 'master', 'small', 'big'
@@ -259,6 +198,10 @@ function PrizeManagerModal({ visible, pools, onSave, onClose }) {
                 <Ionicons name="trash-outline" size={16} color="#ef4444" />
                 <Text style={[styles.quickBtnText, { color: '#ef4444' }]}>Clear List</Text>
               </TouchableOpacity>
+              <TouchableOpacity style={[styles.quickBtn, { borderColor: '#6366f1' }]} onPress={onDevWipe}>
+                <Ionicons name="flash-outline" size={16} color="#6366f1" />
+                <Text style={[styles.quickBtnText, { color: '#6366f1' }]}>Dev Wipe & 100 Rolls</Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -330,25 +273,13 @@ export default function DiceScreen() {
   const [showPrizeLinker, setShowPrizeLinker] = useState(false);
   const [pendingPrize, setPendingPrize] = useState(null); // { name, count }
   const [modalSelection, setModalSelection] = useState(null); // { name, count }
-  const [showEfficiencyRoll, setShowEfficiencyRoll] = useState(false);
+
   
-  const rollSoundRef = useRef(null);
-  const alarmSoundRef = useRef(null);
+  const rollPlayer = useAudioPlayer(require('../../assets/dice-roll.wav'));
+  const alarmPlayer = useAudioPlayer(require('../../assets/calm-alarm.wav'));
   const broadcastRef = useRef(null);
 
   useEffect(() => {
-    async function loadSounds() {
-      try {
-        const { sound: rollSound } = await Audio.Sound.createAsync(require('../../assets/dice-roll.wav'));
-        rollSoundRef.current = rollSound;
-        
-        const { sound: alarmSound } = await Audio.Sound.createAsync(require('../../assets/calm-alarm.wav'));
-        alarmSoundRef.current = alarmSound;
-      } catch (e) {
-        console.log('Failed to load focus sounds', e);
-      }
-    }
-    loadSounds();
 
     // Initialize BroadcastChannel for D20 Board sync across tabs
     if (Platform.OS === 'web' && typeof BroadcastChannel !== 'undefined') {
@@ -368,25 +299,21 @@ export default function DiceScreen() {
     }
 
     return () => {
-      if (rollSoundRef.current) rollSoundRef.current.unloadAsync();
-      if (alarmSoundRef.current) alarmSoundRef.current.unloadAsync();
       if (broadcastRef.current) broadcastRef.current.close();
     };
   }, [user?.id, storagePrefix]);
 
-  async function playAlarmSound() {
+  function playAlarmSound() {
     try {
-      if (alarmSoundRef.current) {
-        await alarmSoundRef.current.replayAsync();
-      }
+      alarmPlayer.seekTo(0);
+      alarmPlayer.play();
     } catch (e) {}
   }
 
-  async function playRollSound() {
+  function playRollSound() {
     try {
-      if (rollSoundRef.current) {
-        await rollSoundRef.current.replayAsync();
-      }
+      rollPlayer.seekTo(0);
+      rollPlayer.play();
     } catch (e) {}
   }
   
@@ -399,6 +326,8 @@ export default function DiceScreen() {
   
   const [showSwapUI, setShowSwapUI]     = useState(null); // stores multiplier count when active
   const [showAnyPicker, setShowAnyPicker] = useState(null); // { type: 'all' | 'small', count: int } 
+  const [showRealRollModal, setShowRealRollModal] = useState(false);
+  const [manualFace, setManualFace] = useState('');
   const [history, setHistory]       = useState([]);
   const [rewardPool, setRewardPool] = useState({});
   const [loaded, setLoaded]         = useState(false);
@@ -434,7 +363,19 @@ export default function DiceScreen() {
             const cloud = row.data;
             if (cloud.pools) currentPools = cloud.pools;
             if (cloud.history) setHistory(cloud.history);
-            if (cloud.rewardPool) setRewardPool(cloud.rewardPool);
+            if (cloud.rewardPool) {
+              // Migration: convert legacy { name: count } to { name: { count, lastWon } }
+              const pool = cloud.rewardPool;
+              const converted = {};
+              Object.keys(pool).forEach(key => {
+                if (typeof pool[key] === 'number') {
+                  converted[key] = { count: pool[key], lastWon: Date.now() };
+                } else {
+                  converted[key] = pool[key];
+                }
+              });
+              setRewardPool(converted);
+            }
             if (cloud.dailyBoard) boardData = cloud.dailyBoard;
             if (cloud.multiplier) setMultiplier(cloud.multiplier);
             if (cloud.bank5IfOver17) setBank5IfOver17(cloud.bank5IfOver17);
@@ -550,37 +491,53 @@ export default function DiceScreen() {
       else if (basePrize.includes('If Next Roll is Over 17 - Bank 5 rolls')) setBank5IfOver17(c => c + count);
       else if (basePrize.includes('Choose Any Small Prize')) setShowAnyPicker({ type: 'small', count });
       else {
-         setRewardPool(pool => ({ ...pool, [finalPrize]: (pool[finalPrize] || 0) + count }));
+         setRewardPool(pool => {
+            const current = pool[finalPrize];
+            // Handle both new {count, lastWon} structure and legacy numeric values
+            const countVal = typeof current === 'object' ? current.count : (current || 0);
+            return {
+               ...pool,
+               [finalPrize]: {
+                  count: countVal + count,
+                  lastWon: Date.now()
+               }
+            };
+         });
       }
       
       setHistory(h => [{ face: logFace, prize: finalPrize, time: Date.now() }, ...h].slice(0, 20));
   }
   
-  // Daily 8 AM Reshuffle Prompt
+  // Daily 8 AM Reshuffle Prompt logic
+  const hasPromptedRef = useRef(false);
   useEffect(() => {
-    if (!loaded || !dailyBoard) return;
+    if (!loaded || !dailyBoard || hasPromptedRef.current) return;
     
     async function checkDailyPrompt() {
       const now = new Date();
       if (now.getHours() < 8) return; // Only prompt at or after 8 AM
       
-      const today = now.toDateString();
+      const todayString = now.toDateString();
       const promptKey = `${storagePrefix}last_daily_reshuffle_prompt`;
-      const lastPrompt = await AsyncStorage.getItem(promptKey);
       
-      if (lastPrompt !== today) {
+      // If the board is ALREADY from today, we don't need to prompt for a refresh
+      if (dailyBoard.date === todayString) return;
+
+      const lastPrompt = await AsyncStorage.getItem(promptKey);
+      if (lastPrompt !== todayString) {
+        hasPromptedRef.current = true;
         // Mark as prompted today immediately to avoid multiple alerts
-        await AsyncStorage.setItem(promptKey, today);
+        await AsyncStorage.setItem(promptKey, todayString);
         
         Alert.alert(
           'Daily Board Refresh 🎲',
-          'It is past 8:00 AM! Would you like to perform a free manual reshuffle of your D20 rewards board for the day?',
+          'It is past 8:00 AM and your rewards board is from yesterday! Would you like to perform a free manual reshuffle for the new day?',
           [
             { text: 'Maybe Later', style: 'cancel' },
             { 
               text: 'Reshuffle Now', 
               onPress: () => {
-                const newBoard = { date: today, map: generateDailyPool(pools) };
+                const newBoard = { date: todayString, map: generateDailyPool(pools) };
                 setDailyBoard(newBoard);
                 Alert.alert('Success!', 'Board has been reshuffled for free.');
               }
@@ -590,7 +547,7 @@ export default function DiceScreen() {
       }
     }
     checkDailyPrompt();
-  }, [loaded, dailyBoard, storagePrefix, pools]);
+  }, [loaded, dailyBoard?.date, storagePrefix, pools]);
 
   const submitRollResult = (face) => {
     let basePrize = dailyBoard.map[face] || 'Fallback Prize';
@@ -615,8 +572,7 @@ export default function DiceScreen() {
        setShowAnyPicker({ type: 'all', count: currentMultiplier });
     } else if (face === 19) {
        setHistory(h => [{ face, prize: resultText, time: Date.now() }, ...h].slice(0, 20));
-       setMultiplier(m => m * 2);
-       addFreeRoll(1);
+       setMultiplier(m => (m === 1 ? 2 : m + 2));
     } else if (face !== 1) {
        grantPrizeMechanics(basePrize, currentMultiplier, face);
     }
@@ -626,46 +582,61 @@ export default function DiceScreen() {
     }
   };
 
-  const handlePhysicalRoll = () => {
+  function startRealRoll() {
     if (rolling || !dailyBoard || !dailyBoard.map) return;
-    
-    Alert.prompt(
-      'Physical Roll Result',
-      'Roll your real D20 and enter exactly what you rolled (1-20):',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Confirm', 
-          onPress: (val) => {
-             const face = parseInt(val);
-             if (isNaN(face) || face < 1 || face > 20) {
-                Alert.alert('Invalid Roll', 'Must be a number between 1 and 20.');
-                return;
-             }
-             if (!spendPoints(100)) {
-               Alert.alert('Not enough Points', 'You need 100 Points or a Free Roll to roll for rewards.');
-               return;
-             }
-             setResult(null);
-             submitRollResult(face);
-          }
-        }
-      ],
-      'plain-text',
-      '',
-      'number-pad'
-    );
-  };
+    setManualFace('');
+    setShowRealRollModal(true);
+  }
 
-  function rollDice() {
-    if (rolling || !dailyBoard || !dailyBoard.map) return;
-
-    if (!spendPoints(100)) {
-      Alert.alert('Not enough Points', 'You need 100 Points or a Free Roll to roll for rewards.');
+  function submitManualRoll() {
+    if (rolling) return;
+    const val = parseInt(manualFace, 10);
+    if (isNaN(val) || val < 1 || val > 20) {
+      Alert.alert('Invalid Roll', 'Please enter a number between 1 and 20.');
       return;
     }
 
     setRolling(true);
+
+    // Deduct points/rolls ONLY if not a bonus multiplier roll
+    if (multiplier === 1) {
+      if (!spendPoints(100)) {
+        setRolling(false);
+        Alert.alert('Not enough Points', 'You need 100 Points or a Free Roll to roll for rewards.');
+        setShowRealRollModal(false);
+        return;
+      }
+    }
+
+    setResult(null);
+    resultFade.setValue(0);
+    setShowRealRollModal(false);
+
+    // Trigger a quick pulse/glow on the digital dice to show "something happened"
+    Animated.sequence([
+      Animated.spring(bounce, { toValue: 1.15, friction: 3, tension: 200, useNativeDriver: true }),
+      Animated.spring(bounce, { toValue: 1, friction: 5, tension: 100, useNativeDriver: true }),
+      Animated.timing(glow, { toValue: 1, duration: 400, useNativeDriver: true }),
+    ]).start(() => {
+      submitRollResult(val);
+      setRolling(false);
+      Animated.spring(resultFade, { toValue: 1, friction: 6, tension: 120, useNativeDriver: true }).start();
+    });
+  }
+
+  function rollDice() {
+    if (rolling || !dailyBoard || !dailyBoard.map) return;
+
+    setRolling(true);
+
+    if (multiplier === 1) {
+      if (!spendPoints(100)) {
+        setRolling(false);
+        Alert.alert('Not enough Points', 'You need 100 Points or a Free Roll to roll for rewards.');
+        return;
+      }
+    }
+
     setResult(null);
     playRollSound();
     resultFade.setValue(0);
@@ -695,9 +666,15 @@ export default function DiceScreen() {
 
   function claimReward(prize, count = 1) {
     setRewardPool(pool => {
+      const current = pool[prize];
+      if (!current) return pool;
+      
       const newPool = { ...pool };
-      if (newPool[prize] > count) {
-        newPool[prize] -= count;
+      const currentCount = typeof current === 'object' ? current.count : current;
+      const lastWon = typeof current === 'object' ? current.lastWon : Date.now();
+
+      if (currentCount > count) {
+        newPool[prize] = { count: currentCount - count, lastWon };
       } else {
         delete newPool[prize];
       }
@@ -711,10 +688,10 @@ export default function DiceScreen() {
     let finalPrize = prize;
     if (count > 1) finalPrize = `[x${count}] ${prize}`;
     
-    setResult({ face: 20, prize: finalPrize });
     grantPrizeMechanics(prize, count, 20);
     setMultiplier(1);
     setShowAnyPicker(null);
+    setResult(null); // Clear congrats card so it can't be reused
   }
 
   function executeSwap(targetFace, newPrize) {
@@ -726,27 +703,28 @@ export default function DiceScreen() {
     let finalPrize = newPrize;
     if (count > 1) finalPrize = `[x${count}] ${newPrize}`;
     
-    setResult(r => ({ ...r, prize: `Swapped: ${finalPrize}` }));
     grantPrizeMechanics(newPrize, count, 18);
     setMultiplier(1);
     setShowSwapUI(null);
+    setResult(null); // Clear congrats card so it can't be reused
   }
 
   const poolEntries = Object.entries(rewardPool)
-    .filter(([, count]) => typeof count === 'number' && !isNaN(count))
+    .filter(([, val]) => {
+      const count = typeof val === 'object' ? val.count : val;
+      return typeof count === 'number' && !isNaN(count) && count > 0;
+    })
     .sort((a, b) => {
-      const aName = a[0];
-      const bName = b[0];
-      const aStartsNum = /^\d/.test(aName);
-      const bStartsNum = /^\d/.test(bName);
-
-      if (aStartsNum && !bStartsNum) return -1;
-      if (!aStartsNum && bStartsNum) return 1;
+      const aData = a[1];
+      const bData = b[1];
       
-      // If both are numbers or both are text, sort naturally (handles "5" vs "10")
-      return aName.localeCompare(bName, undefined, { numeric: true, sensitivity: 'base' });
+      const aTime = typeof aData === 'object' ? aData.lastWon : 0;
+      const bTime = typeof bData === 'object' ? bData.lastWon : 0;
+
+      // Sort by most recent win on top
+      return bTime - aTime;
     });
-  const totalUnclaimed = poolEntries.reduce((acc, [, count]) => acc + count, 0);
+    const totalUnclaimed = poolEntries.reduce((acc, [, val]) => acc + (typeof val === 'object' ? val.count : val), 0);
 
   function handleManualShuffle() {
     const msg = 'Would you like to manually randomize the entire custom D20 Board? This costs 200 Points.';
@@ -865,7 +843,7 @@ export default function DiceScreen() {
           <View style={styles.headerLeft}>
             <Ionicons name="dice-outline" size={24} color={colors.primary} />
             <View>
-              <Text style={styles.headerTitle}>Roll Rewards</Text>
+              <Text style={styles.headerTitle}>Roll</Text>
               <Text style={styles.headerSub}>
                 {Object.values(pools).reduce((acc, p) => acc + (p || []).length, 0)} prizes loaded
               </Text>
@@ -887,13 +865,9 @@ export default function DiceScreen() {
 
         {/* Main interactive area */}
         <View style={styles.gameArea}>
-          {/* Ambient glow behind dice */}
-          <Animated.View style={[styles.ambientGlow, { opacity: glowOpacity }]} />
-
           <Animated.View style={{
             transform: [
               { translateY: floatTranslate },
-              { rotate: spinRotation },
               { scale: bounce },
             ],
           }}>
@@ -901,14 +875,16 @@ export default function DiceScreen() {
               onPress={rollDice}
               activeOpacity={0.8}
               disabled={rolling}
+              style={{ alignItems: 'center', justifyContent: 'center' }}
             >
-              <D20Shape size={Platform.OS === 'web' ? Math.min(SCREEN_W * 0.48, 180) : SCREEN_W * 0.48} color={colors.primary} glowColor={colors.primary} />
-              {/* Number on the face */}
-              <View style={styles.diceNumberWrap}>
-                <Text style={styles.diceNumber}>
-                  {rolling ? '?' : (result ? result.face : '20')}
-                </Text>
-              </View>
+              <Dice3D 
+                size={Platform.OS === 'web' ? Math.min(SCREEN_W * 0.8, 320) : SCREEN_W * 0.8} 
+                rolling={rolling} 
+                result={result} 
+                color={colors.primary} 
+                glowColor={colors.primary} 
+              />
+              
             </TouchableOpacity>
           </Animated.View>
         </View>
@@ -930,20 +906,23 @@ export default function DiceScreen() {
               onPress={rollDice}
               activeOpacity={0.8}
             >
-              <Ionicons name="play" size={20} color="#fff" />
+              <Ionicons name="dice-outline" size={20} color="#fff" />
               <Text style={styles.rollAgainText}>Roll {multiplier > 1 ? `x${multiplier}` : 'Dice'}</Text>
             </TouchableOpacity>
 
-            {economy.freeRolls > 1 && (
-              <TouchableOpacity 
-                style={[styles.rollAgainBtn, { backgroundColor: '#8b5cf6' }]} 
-                onPress={() => setShowEfficiencyRoll(true)}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="flash-outline" size={20} color="#fff" />
-                <Text style={styles.rollAgainText}>Efficiency Roll ({economy.freeRolls})</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity 
+              style={[styles.rollAgainBtn, { backgroundColor: colors.primary }]} 
+              onPress={startRealRoll}
+              activeOpacity={0.8}
+            >
+              <View style={{ alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="dice-outline" size={18} color="#fff" />
+                  <Text style={[styles.rollAgainText, { color: '#fff' }]}>Real Roll</Text>
+                </View>
+                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', fontWeight: '600' }}>I have my own D20 to roll</Text>
+              </View>
+            </TouchableOpacity>
           </View>
         )}
         
@@ -972,10 +951,6 @@ export default function DiceScreen() {
                 <Text style={styles.rollAgainText}>Pick Any Prize</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={styles.rollAgainBtn} onPress={rollDice}>
-              <Ionicons name="dice-outline" size={18} color="#fff" />
-              <Text style={styles.rollAgainText}>Roll Again</Text>
-            </TouchableOpacity>
           </Animated.View>
         )}
 
@@ -1113,7 +1088,9 @@ export default function DiceScreen() {
               </View>
             </View>
             <Text style={styles.poolHint}>Claim rewards once you've taken them!</Text>
-            {poolEntries.map(([prize, count]) => (
+            {poolEntries.map(([prize, val]) => {
+             const count = typeof val === 'object' ? val.count : val;
+             return (
               <View key={prize} style={styles.poolRow}>
                 <View style={styles.poolPrizeInfo}>
                   <Text style={styles.poolPrize} numberOfLines={2}>{prize}</Text>
@@ -1128,7 +1105,8 @@ export default function DiceScreen() {
                   <Text style={styles.claimBtnText}>Claim</Text>
                 </TouchableOpacity>
               </View>
-            ))}
+             );
+           })}
           </View>
         )}
 
@@ -1154,11 +1132,17 @@ export default function DiceScreen() {
       </ScrollView>
 
       {/* Prize manager modal */}
-      <PrizeManagerModal
-        visible={showManager}
-        pools={pools}
-        onSave={savePrizes}
-        onClose={() => setShowManager(false)}
+      <PrizeManagerModal 
+        visible={showManager} 
+        pools={pools} 
+        onSave={savePrizes} 
+        onClose={() => setShowManager(false)} 
+        onDevWipe={() => {
+          setRewardPool({});
+          addFreeRoll(100);
+          Alert.alert('Dev Reset', 'Pool wiped and 100 rolls added!');
+          setShowManager(false);
+        }}
       />
 
       {/* Any Prize Picker Modal */}
@@ -1263,7 +1247,8 @@ export default function DiceScreen() {
                  <Text style={{ fontSize: 16, color: colors.textMuted, marginTop: 12 }}>No unclaimed rewards found.</Text>
                </View>
               ) : (
-                poolEntries.map(([prize, count]) => {
+                poolEntries.map(([prize, val]) => {
+                  const count = typeof val === 'object' ? val.count : val;
                   const isSelected = modalSelection?.name === prize;
                   return (
                     <TouchableOpacity 
@@ -1334,20 +1319,46 @@ export default function DiceScreen() {
         </ModalScreen>
       </Modal>
 
-      {/* Efficiency Roll Modal */}
-      <EfficiencyRollModal
-        visible={showEfficiencyRoll}
-        freeRolls={economy.freeRolls}
-        onClose={() => setShowEfficiencyRoll(false)}
-        onFinish={(payout) => {
-          bulkConsumeFreeRolls();
-          addReward(payout.points, payout.xp);
-          setShowEfficiencyRoll(false);
-          // Show a quick alert with results
-          Alert.alert('Consolidated Rewards!', `You banked ${payout.points} Points and ${payout.xp} XP!`);
-        }}
-        colors={colors}
-      />
+      {/* Manual Roll Modal */}
+      <Modal visible={showRealRollModal} transparent animationType="fade" onRequestClose={() => setShowRealRollModal(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 24, padding: 24, width: '100%', maxWidth: 340, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 }}>
+            <View style={{ alignItems: 'center', marginBottom: 20 }}>
+              <View style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: '#f5f3ff', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                <Ionicons name="dice-outline" size={28} color={colors.primary} />
+              </View>
+              <Text style={{ fontSize: 20, fontWeight: '800', color: '#111827' }}>Manual D20 Roll</Text>
+              <Text style={{ fontSize: 14, color: '#6b7280', textAlign: 'center', marginTop: 4 }}>Enter the result of your physical roll below.</Text>
+            </View>
+
+            <TextInput
+              style={{ backgroundColor: '#f9fafb', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 16, padding: 20, fontSize: 32, fontWeight: '900', color: colors.primary, textAlign: 'center', marginBottom: 20 }}
+              placeholder="1-20"
+              placeholderTextColor="#d1d5db"
+              keyboardType="number-pad"
+              maxLength={2}
+              value={manualFace}
+              onChangeText={setManualFace}
+              autoFocus
+            />
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity 
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 14, backgroundColor: '#f3f4f6', alignItems: 'center' }} 
+                onPress={() => setShowRealRollModal(false)}
+              >
+                <Text style={{ color: '#4b5563', fontWeight: '700' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={{ flex: 2, paddingVertical: 14, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center' }} 
+                onPress={submitManualRoll}
+              >
+                <Text style={{ color: '#fff', fontWeight: '800' }}>Confirm Roll</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {showScrollTop && <ScrollToTop scrollRef={scrollRef} />}
     </SafeAreaView>
@@ -1429,16 +1440,14 @@ const styles = StyleSheet.create({
   gameArea: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 24,
-    paddingBottom: 8,
+    paddingTop: 32,
+    paddingBottom: 24,
   },
-  ambientGlow: {
-    position: 'absolute',
-    width: Platform.OS === 'web' ? Math.min(SCREEN_W * 0.6, 200) : SCREEN_W * 0.6,
-    height: Platform.OS === 'web' ? Math.min(SCREEN_W * 0.6, 200) : SCREEN_W * 0.6,
-    borderRadius: Platform.OS === 'web' ? Math.min(SCREEN_W * 0.3, 100) : SCREEN_W * 0.3,
-    backgroundColor: colors.primary,
-    opacity: 0.15,
+  gameArea: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 16,
+    paddingBottom: 16,
   },
   diceNumberWrap: {
     ...StyleSheet.absoluteFillObject,

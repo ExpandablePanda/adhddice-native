@@ -1,10 +1,51 @@
+import { Platform, View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import React from 'react';
-import { View, Text, TouchableOpacity, Platform, StyleSheet, Image } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, NavigationIndependentTree } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import { LogBox } from 'react-native';
+
+// Silence noisy but harmless WebGL/EXGL, Three.js, and hot-reload warnings
+const IGNORED_LOGS = [
+  'Multiple instances of Three.js being imported',
+  'Clock: This module has been deprecated',
+  'EXT_color_buffer_float extension not supported',
+  'gl.pixelStorei() doesn\'t support this parameter yet!',
+  'Three.js being imported multiple times',
+  // r3f v9 bridges ALL React contexts (including React Navigation) into the Canvas's
+  // new React root via its-fine. During Fast Refresh, the bridged NavigationStateContext
+  // lingers while the main tree remounts, causing a false "nested NavigationContainer"
+  // detection. This is a dev-only hot-reload artifact — the app works correctly.
+  "Looks like you have nested a 'NavigationContainer' inside another",
+];
+
+LogBox.ignoreLogs(IGNORED_LOGS);
+
+// Override console.warn to capture and suppress these from terminal output as well
+const originalWarn = console.warn;
+console.warn = (...args) => {
+  const msg = args.join(' ');
+  if (IGNORED_LOGS.some(log => msg.includes(log))) return;
+  originalWarn(...args);
+};
+
+// Suppress the NavigationContainer false-positive from console.error too (Fast Refresh artifact)
+const originalError = console.error;
+console.error = (...args) => {
+  const msg = args.join(' ');
+  if (IGNORED_LOGS.some(log => msg.includes(log))) return;
+  originalError(...args);
+};
+
+// Also filter console.log for the pixelStorei EXGL messages which often come as LOG
+const originalLog = console.log;
+console.log = (...args) => {
+  const msg = args.join(' ');
+  if (msg.includes('gl.pixelStorei()')) return;
+  originalLog(...args);
+};
 
 import TasksScreen from './src/screens/TasksScreen';
 import RoutinesScreen from './src/screens/RoutinesScreen';
@@ -90,7 +131,7 @@ const tabs = [
   { name: 'Tasks',        component: TasksScreen,    icon: 'checkbox-outline' },
   { name: 'Routines',     component: RoutinesScreen,  icon: 'list-circle-outline' },
   { name: 'Focus',        component: FocusScreen,     icon: 'timer-outline' },
-  { name: 'Roll Rewards', component: DiceScreen,      icon: 'dice-outline' },
+  { name: 'Roll',         component: DiceScreen,      icon: 'dice-outline' },
   { name: 'Games',        component: GamesScreen,     icon: 'game-controller-outline' },
   { name: 'Stats',        component: StatsScreen,     icon: 'bar-chart-outline' },
   { name: 'Notes',        component: NotesScreen,     icon: 'document-text-outline' },
@@ -173,6 +214,10 @@ function MainApp() {
   if (!navReady) return null;
 
   return (
+    // NavigationIndependentTree resets the navigation context check so r3f/its-fine's
+    // context bridging (which re-provides NavigationStateContext inside the Canvas root)
+    // doesn't trigger React Navigation's nested-container detection.
+    <NavigationIndependentTree>
     <NavigationContainer
       initialState={initialNavState}
       onStateChange={(state) => {
@@ -203,6 +248,7 @@ function MainApp() {
         ))}
       </Tab.Navigator>
     </NavigationContainer>
+    </NavigationIndependentTree>
   );
 }
 

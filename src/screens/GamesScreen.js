@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Audio } from 'expo-av';
+import { useAudioPlayer } from 'expo-audio';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Alert, Animated, Easing, Dimensions, Modal, Image, Platform
@@ -430,30 +430,13 @@ function RecordDiceModal({ visible, onReward, colors, title = "NEW RECORD!" }) {
   const [baseRoll, setBaseRoll] = useState(1);
   const [multiRoll, setMultiRoll] = useState(1);
   const spinVal = useRef(new Animated.Value(0)).current;
-  const rollSoundRef = useRef(null);
+  const rollPlayer = useAudioPlayer(require('../../assets/dice-roll.wav'));
 
-  useEffect(() => {
-    async function loadSound() {
-      try {
-        const { sound } = await Audio.Sound.createAsync(require('../../assets/dice-roll.wav'));
-        rollSoundRef.current = sound;
-      } catch (e) {
-        console.log('Failed to load dice-roll sound', e);
-      }
-    }
-    loadSound();
-    return () => {
-      if (rollSoundRef.current) {
-        rollSoundRef.current.unloadAsync();
-      }
-    };
-  }, []);
 
-  async function playRollSound() {
+  function playRollSound() {
     try {
-      if (rollSoundRef.current) {
-        await rollSoundRef.current.replayAsync();
-      }
+      rollPlayer.seekTo(0);
+      rollPlayer.play();
     } catch (e) {}
   }
 
@@ -581,47 +564,21 @@ function WarGame({ onBack, tasks, colors }) {
   const [waitingForPlayer, setWaitingForPlayer] = useState(false);
 
   // Audio — use refs to avoid stale-closure unload bug
-  const flipSoundRef = useRef(null);
-  const shuffleSoundRef = useRef(null);
+  const flipPlayer = useAudioPlayer(require('../../assets/card-flip.mp3'));
+  const shufflePlayer = useAudioPlayer(require('../../assets/card-shuffle.mp3'));
 
-  useEffect(() => {
-    async function setupAudio() {
-      try {
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: false,
-          shouldDuckAndroid: true,
-        });
-      } catch (e) {}
-    }
-    setupAudio();
-    return () => {
-      if (flipSoundRef.current) flipSoundRef.current.unloadAsync();
-      if (shuffleSoundRef.current) shuffleSoundRef.current.unloadAsync();
-    };
-  }, []);
 
-  async function playFlipSound() {
+  function playFlipSound() {
     try {
-      if (flipSoundRef.current) {
-        await flipSoundRef.current.replayAsync();
-      } else {
-        const { sound } = await Audio.Sound.createAsync(require('../../assets/card-flip.mp3'));
-        flipSoundRef.current = sound;
-        await sound.playAsync();
-      }
+      flipPlayer.seekTo(0);
+      flipPlayer.play();
     } catch (e) {}
   }
 
-  async function playShuffleSound() {
+  function playShuffleSound() {
     try {
-      if (shuffleSoundRef.current) {
-        await shuffleSoundRef.current.replayAsync();
-      } else {
-        const { sound } = await Audio.Sound.createAsync(require('../../assets/card-shuffle.mp3'));
-        shuffleSoundRef.current = sound;
-        await sound.playAsync();
-      }
+      shufflePlayer.seekTo(0);
+      shufflePlayer.play();
     } catch (e) {}
   }
 

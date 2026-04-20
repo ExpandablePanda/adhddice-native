@@ -11,7 +11,16 @@
       "Bash(sed -i '' '947s|</SafeAreaView>|</ModalScreen>|' /Users/andrewmarkschaffer/adhddice-native/src/screens/DiceScreen.js)",
       "Bash(wc -l /Users/andrewmarkschaffer/adhddice-native/src/screens/*.js)",
       "Bash(grep -n \"beforeunload\\\\|pageshow\\\\|pagehide\" /Users/andrewmarkschaffer/adhddice-native/src/lib/*.js)",
-      "Bash(ls /Users/andrewmarkschaffer/adhddice-native/*.js)"
+      "Bash(ls /Users/andrewmarkschaffer/adhddice-native/*.js)",
+      "Bash(node -e \"const pkg = require\\('./node_modules/@react-three/fiber/package.json'\\); console.log\\(pkg.version\\); console.log\\(Object.keys\\(pkg.dependencies||{}\\).join\\('\\\\n'\\)\\)\")",
+      "Bash(node -e \"const pkg = require\\('./node_modules/its-fine/package.json'\\); console.log\\(pkg.version, JSON.stringify\\(pkg.dependencies\\)\\)\")",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/@react-navigation/native/package.json'\\).version\\)\")",
+      "Bash(node -e \"const pkg = require\\('./node_modules/@react-three/fiber/package.json'\\); console.log\\(pkg.version, JSON.stringify\\(Object.keys\\(pkg.dependencies\\)\\)\\)\")",
+      "Bash(node -e \"const m = require\\('@react-three/drei/native'\\); console.log\\(Object.keys\\(m\\).filter\\(k => k.toLowerCase\\(\\).includes\\('env'\\) || k.toLowerCase\\(\\).includes\\('light'\\) || k.toLowerCase\\(\\).includes\\('stage'\\)\\)\\)\")",
+      "Bash(ls node_modules/@react-three/fiber/node_modules/)",
+      "Bash(ls node_modules/@react-three/drei/node_modules/)",
+      "Bash(python3 -c \"import json,sys; p=json.load\\(sys.stdin\\); print\\('main:', p.get\\('main'\\)\\); print\\('module:', p.get\\('module'\\)\\); print\\('exports keys:', list\\(\\(p.get\\('exports'\\) or {}\\).keys\\(\\)\\)[:5]\\)\")",
+      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./node_modules/three/package.json'\\).exports['.'], null, 2\\)\\)\")"
     ]
   }
 }

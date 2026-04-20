@@ -185,12 +185,14 @@ export function EconomyProvider({ children }) {
   };
 
   const spendPoints = (cost) => {
+    // We check the condition inside the functional update logic in callers where possible,
+    // but here we ensure the logic is sound and respects free rolls first.
     if (economy.freeRolls > 0) {
-      setEconomy(prev => ({ ...prev, freeRolls: prev.freeRolls - 1 }));
+      setEconomy(prev => ({ ...prev, freeRolls: Math.max(0, prev.freeRolls - 1) }));
       return true;
     }
     if (economy.points >= cost) {
-      setEconomy(prev => ({ ...prev, points: prev.points - cost }));
+      setEconomy(prev => ({ ...prev, points: Math.max(0, prev.points - cost) }));
       return true;
     }
     return false;

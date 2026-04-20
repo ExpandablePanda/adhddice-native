@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, Animated, Easing } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
+import { useAudioPlayer } from 'expo-audio';
 import { useEconomy } from '../lib/EconomyContext';
 import { useTasks } from '../lib/TasksContext';
 import { colors } from '../theme';
@@ -24,30 +24,12 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
   const [multiRoll, setMultiRoll] = useState(1);
   
   const spinVal = useRef(new Animated.Value(0)).current;
-  const rollSoundRef = useRef(null);
+  const rollPlayer = useAudioPlayer(require('../../assets/dice-roll.wav'));
 
-  useEffect(() => {
-    async function loadSound() {
-      try {
-        const { sound } = await Audio.Sound.createAsync(require('../../assets/dice-roll.wav'));
-        rollSoundRef.current = sound;
-      } catch (e) {
-        console.log('Failed to load dice-roll sound', e);
-      }
-    }
-    loadSound();
-    return () => {
-      if (rollSoundRef.current) {
-        rollSoundRef.current.unloadAsync();
-      }
-    };
-  }, []);
-
-  async function playRollSound() {
+  function playRollSound() {
     try {
-      if (rollSoundRef.current) {
-        await rollSoundRef.current.replayAsync();
-      }
+      rollPlayer.seekTo(0);
+      rollPlayer.play();
     } catch (e) {}
   }
 
