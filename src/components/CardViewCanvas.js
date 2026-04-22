@@ -1,10 +1,16 @@
 import React, { useRef, useMemo, Suspense } from 'react';
-import { View, PanResponder, useWindowDimensions } from 'react-native';
+import { View, PanResponder, useWindowDimensions, Platform } from 'react-native';
 import { Canvas, useFrame, useThree } from '@react-three/fiber/native';
 import { PerspectiveCamera } from '@react-three/drei/native';
 import { useGLTF } from '@react-three/drei/native';
+import { Asset } from 'expo-asset';
 import * as THREE from 'three';
 import TaskCard3D from './TaskCard3D';
+
+const resolveAsset = (mod) => {
+  if (Platform.OS === 'web' && typeof mod === 'number') return Asset.fromModule(mod).uri || mod;
+  return mod;
+};
 
 const CARD_FOV = 60;
 const CAMERA_Z = 5;
@@ -16,7 +22,7 @@ function CardScene({ tasks, rawScrollPx, flippedCards, onOpen, onHistory, onConf
   const { viewport } = useThree();
 
   // Measure actual card mesh width at scale=1
-  const { scene: glbScene } = useGLTF(require('../../assets/playing_cards.glb'));
+  const { scene: glbScene } = useGLTF(resolveAsset(require('../../assets/playing_cards.glb')));
   const naturalCardW = useMemo(() => {
     if (!glbScene) return null;
     let mesh = null;

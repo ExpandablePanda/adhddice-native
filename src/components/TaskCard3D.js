@@ -2,7 +2,14 @@ import React, { useRef, useMemo } from 'react';
 import { useFrame, useLoader } from '@react-three/fiber/native';
 import { useGLTF, useTexture } from '@react-three/drei/native';
 import * as THREE from 'three';
+import { Platform } from 'react-native';
+import { Asset } from 'expo-asset';
 import { STATUSES, calculateTaskStreak, calculateTaskMissedStreak } from '../lib/TasksContext';
+
+const resolveAsset = (mod) => {
+  if (Platform.OS === 'web' && typeof mod === 'number') return Asset.fromModule(mod).uri || mod;
+  return mod;
+};
 
 const ENERGY = {
   low:    { label: 'Low',    color: '#10b981', bg: '#d1fae5' },
@@ -117,8 +124,8 @@ export default function TaskCard3D({
   const flipRef   = useRef(isFlipped ? Math.PI : 0);
   const spinRef   = useRef(0);
 
-  const { scene }    = useGLTF(require('../../assets/playing_cards.glb'));
-  const iconTexture  = useTexture(require('../../assets/logo.png'));
+  const { scene }    = useGLTF(resolveAsset(require('../../assets/playing_cards.glb')));
+  const iconTexture  = useTexture(resolveAsset(require('../../assets/logo.png')));
 
   // ── Task data ─────────────────────────────────────────────────────────────
   const title       = task?.title  || 'Untitled';
