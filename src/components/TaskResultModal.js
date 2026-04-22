@@ -87,8 +87,9 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
           
           const pts = base * multi;
           const xp = Math.floor(pts / 2);
+          const tks = Math.max(1, Math.floor(pts / 10)); // 1 token per 10 points, min 1
           
-          addReward(pts, xp);
+          addReward(pts, xp, tks);
           
           // Wait to reveal multiplier number before showing final aggregate
           setTimeout(() => {
@@ -103,7 +104,10 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
   function handleClose() {
     if (task) {
       // onComplete → handleTaskCompleting → setCompletingTask(null) hides the modal
-      onComplete(task.id, { points: baseRoll * multiRoll, xp: Math.floor((baseRoll * multiRoll) / 2) });
+      const pts = baseRoll * multiRoll;
+      const xp = Math.floor(pts / 2);
+      const tks = Math.max(1, Math.floor(pts / 10));
+      onComplete(task.id, { points: pts, xp, tokens: tks });
     } else {
       onClose();
     }
@@ -215,7 +219,10 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
 
               <View style={styles.finalBox}>
                 <Text style={styles.finalPts}>+{baseRoll * multiRoll} Points</Text>
-                <Text style={styles.finalXp}>+{Math.floor((baseRoll * multiRoll) / 2)} XP</Text>
+                <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+                  <Text style={styles.finalXp}>+{Math.floor((baseRoll * multiRoll) / 2)} XP</Text>
+                  <Text style={[styles.finalXp, { color: '#8b5cf6' }]}>+{Math.max(1, Math.floor((baseRoll * multiRoll) / 10))} Tokens</Text>
+                </View>
               </View>
 
               <TouchableOpacity style={styles.doneBtn} onPress={handleClose}>

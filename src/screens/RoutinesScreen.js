@@ -509,8 +509,8 @@ export default function RoutinesScreen() {
 
   return (
     <View style={dynamicStyles.container}>
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Platform.OS === 'ios' ? 12 : 20, paddingBottom: 16 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Platform.OS === 'ios' ? 12 : 16, paddingBottom: 16 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <Ionicons name="list-circle-outline" size={26} color={colors.primary} />
             <Text style={dynamicStyles.headerTitle}>Routines</Text>

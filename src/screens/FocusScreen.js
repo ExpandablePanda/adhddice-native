@@ -1219,7 +1219,7 @@ export default function FocusScreen() {
     adjustTimer,
     startTimer, stopTimer, resetTimer
   } = useFocus();
-  const { addReward, removeReward } = useEconomy();
+  const { addReward, removeReward, calculateDiminishingPoints } = useEconomy();
   const galleryScrolledRef = useRef(false);
 
   const [timerSeconds, setTimerSeconds] = useState(0); // For display only
@@ -1302,7 +1302,7 @@ export default function FocusScreen() {
     if (isUnproductive) {
       setPendingPenalty({ minutes, baseDeduction: minutes });
     } else {
-      const basePoints = Math.max(1, minutes * 2);
+      const basePoints = calculateDiminishingPoints(minutes);
       setPendingFocusReward({ minutes, basePoints });
     }
   }
@@ -1322,7 +1322,7 @@ export default function FocusScreen() {
       if (isUnproductive) {
         baseDeduction = entry.minutes;
       } else {
-        basePoints = Math.max(1, entry.minutes * 2);
+        basePoints = calculateDiminishingPoints(entry.minutes);
       }
     }
 
@@ -1331,7 +1331,7 @@ export default function FocusScreen() {
 
     if (baseDeduction > 0) {
       setTimeout(() => setPendingPenalty({ minutes: entry.minutes, baseDeduction }), 300);
-    } else if (basePoints > 0) {
+    } else if (entry.minutes > 0) {
       setTimeout(() => {
         setPendingFocusReward({ minutes: entry.minutes, basePoints });
       }, 300);

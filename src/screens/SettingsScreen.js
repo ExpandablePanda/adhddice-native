@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Switch, Platform, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useEconomy } from '../lib/EconomyContext';
@@ -9,6 +9,7 @@ import { useSettings } from '../lib/SettingsContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ScrollToTop from '../components/ScrollToTop';
 import { APP_VERSION } from '../lib/Constants';
+import { getBackups, createSafetyBackup, restoreBackup } from '../lib/BackupManager';
 
 export default function SettingsScreen() {
   const { resetEconomy, cheatEconomy } = useEconomy();
@@ -19,6 +20,8 @@ export default function SettingsScreen() {
   const [exportedData, setExportData] = useState('');
   const [showImport, setShowImport] = useState(false);
   const [importDataText, setImportDataText] = useState('');
+  const [showBackups, setShowBackups] = useState(false);
+  const [backups, setBackups] = useState([]);
   
   const scrollRef = useRef(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -41,73 +44,97 @@ export default function SettingsScreen() {
     ]);
   };
 
-  const handleNukeTasks = () => {
+  const handleNukeTasks = async () => {
     console.log("Nuke button clicked");
     if (Platform.OS === 'web') {
       const ok = window.confirm("Delete all tasks permanently?");
-      if (ok) setTasks([]);
+      if (ok) {
+        await createSafetyBackup(storagePrefix, 'Before Nuke Board');
+        setTasks([]);
+      }
       return;
     }
     Alert.alert("Nuke Board", "Delete all tasks?", [
       { text: "Cancel" },
-      { text: "Delete", onPress: () => setTasks([]) }
+      { text: "Delete", onPress: async () => {
+          await createSafetyBackup(storagePrefix, 'Before Nuke Board');
+          setTasks([]);
+        } 
+      }
     ]);
   };
 
-  const handleDemoData = () => {
-    const categories = ['work', 'health', 'finance', 'chores', 'social', 'hobby', 'studies', 'self-care'];
-    const energyLevels = ['low', 'medium', 'high'];
-    const statuses = ['pending', 'active', 'done', 'missed', 'did_my_best', 'upcoming', 'first_step'];
-    const titles = [
-      'Take out trash', 'Walk dog', 'Review budget', 'Clean kitchen', 'Read 1 chapter',
-      'Morning yoga', 'Refill water bottle', 'Respond to email', 'Draft project plan', 'Buy groceries',
-      'Pay rent', 'Call mom', 'Brush teeth', 'Do laundry', 'Fix leaky tap', 'Water plants',
-      'Check mail', 'Log finances', 'Mediate 10 mins', 'Stretch', 'Study coding', 'Complete level 1',
-      'Cook dinner', 'Clear desk', 'Organize files', 'Update portfolio', 'Schedule dentist',
-      'Prepare lunch', 'Change bedsheets', 'Clean bathroom', 'Wipe windows', 'Vacuum house',
-      'Wash car', 'Mow lawn', 'Prune garden', 'Paint wall', 'Build shelf', 'Sand table',
-      'Reply to Slack', 'Meeting prep', 'Submit report', 'Review PR', 'Fix bug #42', 'Deploy site',
-      'Update LinkedIn', 'Apply for job', 'Work on CV', 'Learn React', 'Learn Native', 'Learn SQL',
-      'Practice guitar', 'Draw sketch', 'Write poem', 'Sing song', 'Dance', 'Stretch session',
-      'Drink water', 'Eat fruit', 'Vitamin check', 'Sunlight exposure', 'Step count check',
-      'Sleep 8 hours', 'Screen-off hour', 'No caffeine', 'Write in journal', 'Gratitude log',
-      'Plan tomorrow', 'Inventory check', 'Car oil change', 'Tire pressure check', 'Gas up',
-      'Visit friend', 'Send text', 'Email grandma', 'Update calendar', 'Sync tasks', 'File away',
-      'Unload dishwasher', 'Scrub floor', 'Dust shelves', 'Polish shoes', 'Iron shirt',
-      'Repair shirt', 'Knit row', 'Play 1 game', 'Watch movie', 'Listen to podcast', 'Go for run'
-    ];
+  const handleDemoData = async () => {
+    if (Platform.OS === 'web') {
+      const ok = window.confirm("Replace all tasks with demo data? This cannot be undone.");
+      if (!ok) return;
+    }
 
-    const demoTasks = Array.from({ length: 100 }, (_, i) => {
-      const cat = categories[i % categories.length];
-      const energy = energyLevels[i % 3];
-      const status = statuses[Math.floor(Math.random() * statuses.length)];
-      const isQuest = Math.random() > 0.8;
-      const streak = (status === 'done' || status === 'active') ? Math.floor(Math.random() * 6) : 0;
-      const title = titles[i % titles.length] + (i > titles.length ? ` #${i}` : '');
+    const loadDemo = async () => {
+      await createSafetyBackup(storagePrefix, 'Before Demo Data');
+      const categories = ['work', 'health', 'finance', 'chores', 'social', 'hobby', 'studies', 'self-care'];
+      const energyLevels = ['low', 'medium', 'high'];
+      const statuses = ['pending', 'active', 'done', 'missed', 'did_my_best', 'upcoming', 'first_step'];
+      const titles = [
+        'Take out trash', 'Walk dog', 'Review budget', 'Clean kitchen', 'Read 1 chapter',
+        'Morning yoga', 'Refill water bottle', 'Respond to email', 'Draft project plan', 'Buy groceries',
+        'Pay rent', 'Call mom', 'Brush teeth', 'Do laundry', 'Fix leaky tap', 'Water plants',
+        'Check mail', 'Log finances', 'Mediate 10 mins', 'Stretch', 'Study coding', 'Complete level 1',
+        'Cook dinner', 'Clear desk', 'Organize files', 'Update portfolio', 'Schedule dentist',
+        'Prepare lunch', 'Change bedsheets', 'Clean bathroom', 'Wipe windows', 'Vacuum house',
+        'Wash car', 'Mow lawn', 'Prune garden', 'Paint wall', 'Build shelf', 'Sand table',
+        'Reply to Slack', 'Meeting prep', 'Submit report', 'Review PR', 'Fix bug #42', 'Deploy site',
+        'Update LinkedIn', 'Apply for job', 'Work on CV', 'Learn React', 'Learn Native', 'Learn SQL',
+        'Practice guitar', 'Draw sketch', 'Write poem', 'Sing song', 'Dance', 'Stretch session',
+        'Drink water', 'Eat fruit', 'Vitamin check', 'Sunlight exposure', 'Step count check',
+        'Sleep 8 hours', 'Screen-off hour', 'No caffeine', 'Write in journal', 'Gratitude log',
+        'Plan tomorrow', 'Inventory check', 'Car oil change', 'Tire pressure check', 'Gas up',
+        'Visit friend', 'Send text', 'Email grandma', 'Update calendar', 'Sync tasks', 'File away',
+        'Unload dishwasher', 'Scrub floor', 'Dust shelves', 'Polish shoes', 'Iron shirt',
+        'Repair shirt', 'Knit row', 'Play 1 game', 'Watch movie', 'Listen to podcast', 'Go for run'
+      ];
 
-      return {
-        id: String(Date.now() + i),
-        title,
-        status,
-        energy: (status === 'pending' || status === 'active') ? energy : (Math.random() > 0.5 ? energy : null),
-        isQuest,
-        tags: [cat],
-        streak,
-        dateCreated: new Date().toISOString(),
-        subtasks: [],
-        dueDate: '',
-        nextDueDate: '',
-        dueTime: '',
-        frequency: null,
-        frequencyDays: null,
-        estimatedMinutes: null,
-        isPriority: false,
-        statusHistory: {},
-      };
-    });
+      const demoTasks = Array.from({ length: 100 }, (_, i) => {
+        const cat = categories[i % categories.length];
+        const energy = energyLevels[i % 3];
+        const status = statuses[Math.floor(Math.random() * statuses.length)];
+        const isQuest = Math.random() > 0.8;
+        const streak = (status === 'done' || status === 'active') ? Math.floor(Math.random() * 6) : 0;
+        const title = titles[i % titles.length] + (i > titles.length ? ` #${i}` : '');
 
-    setTasks(demoTasks);
-    Alert.alert("100 Tasks Loaded", "Your board has been populated with 100 diversified tasks for full testing!");
+        return {
+          id: String(Date.now() + i),
+          title,
+          status,
+          energy: (status === 'pending' || status === 'active') ? energy : (Math.random() > 0.5 ? energy : null),
+          isQuest,
+          tags: [cat],
+          streak,
+          dateCreated: new Date().toISOString(),
+          subtasks: [],
+          dueDate: '',
+          nextDueDate: '',
+          dueTime: '',
+          frequency: null,
+          frequencyDays: null,
+          estimatedMinutes: null,
+          isPriority: false,
+          statusHistory: {},
+        };
+      });
+
+      setTasks(demoTasks);
+      Alert.alert("100 Tasks Loaded", "Your board has been populated with 100 diversified tasks for full testing!");
+    };
+
+    if (Platform.OS !== 'web') {
+      Alert.alert("Load Demo Data", "This will replace ALL your existing tasks with demo data. This cannot be undone. Are you sure?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Load Demo", style: "destructive", onPress: loadDemo }
+      ]);
+    } else {
+      loadDemo();
+    }
   };
 
   const handleExportData = async () => {
@@ -270,7 +297,7 @@ export default function SettingsScreen() {
             <Ionicons name="share-outline" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.cardRow, styles.cardRowLast]} onPress={() => { setShowImport(!showImport); setExportData(''); }}>
+          <TouchableOpacity style={styles.cardRow} onPress={() => { setShowImport(!showImport); setExportData(''); setShowBackups(false); }}>
             <View style={[styles.iconBox, { backgroundColor: '#e0f2fe' }]}>
               <Ionicons name="push" size={20} color={colors.teal} />
             </View>
@@ -279,6 +306,25 @@ export default function SettingsScreen() {
               <Text style={styles.rowDesc}>Paste a JSON block to restore your data.</Text>
             </View>
             <Ionicons name={showImport ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.cardRow, styles.cardRowLast]} onPress={async () => { 
+            if (!showBackups) {
+              const bks = await getBackups(storagePrefix);
+              setBackups(bks);
+            }
+            setShowBackups(!showBackups);
+            setExportData(''); 
+            setShowImport(false);
+          }}>
+            <View style={[styles.iconBox, { backgroundColor: '#e0e7ff' }]}>
+              <Ionicons name="time" size={20} color={colors.blue} />
+            </View>
+            <View style={styles.rowBody}>
+              <Text style={styles.rowTitle}>Restore Auto-Backup</Text>
+              <Text style={styles.rowDesc}>Revert to a previous local save state.</Text>
+            </View>
+            <Ionicons name={showBackups ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
 
@@ -300,6 +346,52 @@ export default function SettingsScreen() {
             <TouchableOpacity style={{ backgroundColor: colors.primary, padding: 14, borderRadius: 12, alignItems: 'center', marginTop: 12 }} onPress={handleImportData}>
               <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>Restore Data</Text>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {showBackups && (
+          <View style={{ marginTop: 24 }}>
+            <Text style={styles.sectionLabel}>Available Auto-Backups</Text>
+            {backups.length === 0 ? (
+              <Text style={{ color: colors.textSecondary, marginLeft: 10 }}>No backups available yet. Auto-backups are created daily on launch.</Text>
+            ) : (
+              <View style={styles.card}>
+                {backups.map((b, i) => (
+                  <TouchableOpacity 
+                    key={b.id}
+                    style={[styles.cardRow, i === backups.length - 1 && styles.cardRowLast]}
+                    onPress={() => {
+                      const doRestore = async () => {
+                        const success = await restoreBackup(storagePrefix, b.id, user);
+                        if (success) {
+                          Alert.alert("Restored!", "Please switch profiles and switch back, or restart your app to load the backup data.");
+                          setShowBackups(false);
+                        } else {
+                          Alert.alert("Error", "Failed to restore backup.");
+                        }
+                      };
+                      if (Platform.OS === 'web') {
+                        if (window.confirm(`Restore ${b.label} from ${b.dateFormatted}?`)) doRestore();
+                      } else {
+                        Alert.alert("Restore Backup", `Restore ${b.label} from ${b.dateFormatted}? This will overwrite current data.`, [
+                          { text: "Cancel", style: "cancel" },
+                          { text: "Restore", style: "destructive", onPress: doRestore }
+                        ]);
+                      }
+                    }}
+                  >
+                    <View style={[styles.iconBox, { backgroundColor: '#f3f4f6' }]}>
+                      <Ionicons name="time-outline" size={20} color={colors.textPrimary} />
+                    </View>
+                    <View style={styles.rowBody}>
+                      <Text style={styles.rowTitle}>{b.label}</Text>
+                      <Text style={styles.rowDesc}>{b.dateFormatted}</Text>
+                    </View>
+                    <Ionicons name="refresh" size={20} color={colors.primary} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
           </View>
         )}
 

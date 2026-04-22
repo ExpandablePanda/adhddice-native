@@ -68,6 +68,7 @@ import { SettingsProvider } from './src/lib/SettingsContext';
 import AuthScreen from './src/screens/AuthScreen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { APP_VERSION } from './src/lib/Constants';
+import { createDailyBackup } from './src/lib/BackupManager';
 
 // ── Error Boundary for Recovery ─────────────────────────────────────────────
 
@@ -112,7 +113,7 @@ class ErrorBoundary extends React.Component {
                 {this.state.error?.toString()}
               </Text>
             </View>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={{ backgroundColor: '#6366f1', paddingHorizontal: 32, paddingVertical: 14, borderRadius: 14, marginTop: 32 }}
               onPress={this.handleReset}
             >
@@ -129,15 +130,15 @@ class ErrorBoundary extends React.Component {
 const Tab = createBottomTabNavigator();
 
 const tabs = [
-  { name: 'Tasks',        component: TasksScreen,    icon: 'checkbox-outline' },
-  { name: 'Routines',     component: RoutinesScreen,  icon: 'list-circle-outline' },
-  { name: 'Focus',        component: FocusScreen,     icon: 'timer-outline' },
-  { name: 'Roll',         component: DiceScreen,      icon: 'dice-outline' },
-  { name: 'Games',        component: GamesScreen,     icon: 'game-controller-outline' },
-  { name: 'Stats',        component: StatsScreen,     icon: 'bar-chart-outline' },
-  { name: 'Notes',        component: NotesScreen,     icon: 'document-text-outline' },
-  { name: 'Settings',     component: SettingsScreen,  icon: 'settings-outline' },
-  { name: 'Test',         component: TestScreen,      icon: 'flask-outline' },
+  { name: 'Tasks', component: TasksScreen, icon: 'checkbox-outline' },
+  { name: 'Routines', component: RoutinesScreen, icon: 'list-circle-outline' },
+  { name: 'Focus', component: FocusScreen, icon: 'timer-outline' },
+  { name: 'Roll', component: DiceScreen, icon: 'dice-outline' },
+  { name: 'Games', component: GamesScreen, icon: 'game-controller-outline' },
+  { name: 'Stats', component: StatsScreen, icon: 'bar-chart-outline' },
+  { name: 'Notes', component: NotesScreen, icon: 'document-text-outline' },
+  { name: 'Settings', component: SettingsScreen, icon: 'settings-outline' },
+  { name: 'Test', component: TestScreen, icon: 'flask-outline' },
 ];
 
 function RPGHeaderRight() {
@@ -161,6 +162,10 @@ function RPGHeaderRight() {
         <Ionicons name="star" size={12} color={colors.amber} />
         <Text style={[headerStyles.pointsText, { color: colors.textPrimary }]}>{economy.points}</Text>
       </View>
+      <View style={[headerStyles.pointsBadge, { marginLeft: 8 }]}>
+        <Ionicons name="wallet" size={12} color="#8b5cf6" />
+        <Text style={[headerStyles.pointsText, { color: colors.textPrimary }]}>{economy.tokens || 0}</Text>
+      </View>
     </View>
   );
 }
@@ -172,9 +177,24 @@ function LogoHeaderLeft() {
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
       <Image
         source={require('./assets/logo.png')}
-        style={{ height: 64, width: 280, marginLeft: -80, marginTop: -10, backgroundColor: 'transparent', resizeMode: 'contain' }}
+        style={{
+          height: 80,       // <--- Original x 1.25
+          width: 350,       // <--- Original x 1.25
+          marginLeft: -110, // <--- Adjusted for extra width
+          marginTop: -10,   // <--- Move logo up/down
+          backgroundColor: 'transparent',
+          resizeMode: 'contain'
+        }}
       />
-      <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textMuted, marginLeft: -45, marginTop: 4 }}>{APP_VERSION}</Text>
+      <Text style={{
+        fontSize: 10,
+        fontWeight: '800',
+        color: colors.textMuted,
+        marginLeft: -115,    // <--- Spacing between Logo and Version
+        marginTop: 4
+      }}>
+        {APP_VERSION}
+      </Text>
     </View>
   );
 }
@@ -197,7 +217,7 @@ function MainApp() {
             setInitialNavState(parsed);
           }
         }
-      } catch (_) {}
+      } catch (_) { }
 
       // When Safari restores from BFCache (e.g. switching back from a full-screen Space),
       // the page is not reloaded — dispatch visibilitychange so contexts can re-sync
@@ -220,38 +240,44 @@ function MainApp() {
     // context bridging (which re-provides NavigationStateContext inside the Canvas root)
     // doesn't trigger React Navigation's nested-container detection.
     <NavigationIndependentTree>
-    <NavigationContainer
-      initialState={initialNavState}
-      onStateChange={(state) => {
-        if (Platform.OS === 'web') {
-          try { localStorage.setItem(NAV_STATE_KEY, JSON.stringify(state)); } catch (_) {}
-        }
-      }}
-    >
-      <StatusBar style={isDark ? "light" : "dark"} />
-      <Tab.Navigator
-        tabBar={props => <FloatingNav {...props} tabs={tabs} />}
-        screenOptions={({ route }) => ({
-          headerStyle: { backgroundColor: colors.headerBackground },
-          headerTintColor: colors.textPrimary,
-          headerTitle: '',
-          headerLeft: () => <LogoHeaderLeft />,
-          headerRight: () => <RPGHeaderRight />,
-          tabBarStyle: { display: 'none' }, // HIDE DEFAULT TAB BAR
-        })}
+      <NavigationContainer
+        initialState={initialNavState}
+        onStateChange={(state) => {
+          if (Platform.OS === 'web') {
+            try { localStorage.setItem(NAV_STATE_KEY, JSON.stringify(state)); } catch (_) { }
+          }
+        }}
       >
-        {tabs.map(t => (
-          <Tab.Screen key={t.name} name={t.name} component={t.component} options={{ unmountOnBlur: false }} />
-        ))}
-      </Tab.Navigator>
-    </NavigationContainer>
+        <StatusBar style={isDark ? "light" : "dark"} />
+        <Tab.Navigator
+          tabBar={props => <FloatingNav {...props} tabs={tabs} />}
+          screenOptions={({ route }) => ({
+            headerStyle: { backgroundColor: colors.headerBackground },
+            headerTintColor: colors.textPrimary,
+            headerTitle: '',
+            headerLeft: () => <LogoHeaderLeft />,
+            headerRight: () => <RPGHeaderRight />,
+            tabBarStyle: { display: 'none' }, // HIDE DEFAULT TAB BAR
+          })}
+        >
+          {tabs.map(t => (
+            <Tab.Screen key={t.name} name={t.name} component={t.component} options={{ unmountOnBlur: false }} />
+          ))}
+        </Tab.Navigator>
+      </NavigationContainer>
     </NavigationIndependentTree>
   );
 }
 
 
 function RootApp() {
-  const { user } = useProfile();
+  const { user, storagePrefix } = useProfile();
+
+  React.useEffect(() => {
+    if (user && storagePrefix) {
+      createDailyBackup(storagePrefix).catch(e => console.error("AutoBackup error", e));
+    }
+  }, [user, storagePrefix]);
 
   if (!user) {
     return <AuthScreen />;
@@ -295,19 +321,19 @@ const headerStyles = StyleSheet.create({
     marginRight: 16,
   },
   lvlBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginRight: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginRight: 8,
   },
   lvlText: {
     color: '#fff',
     fontWeight: '800',
-    fontSize: 12,
+    fontSize: 11,
   },
   xpContainer: {
-    width: 60,
-    marginRight: 12,
+    width: 50,
+    marginRight: 8,
   },
   xpTextRow: {
     alignItems: 'flex-end',
@@ -329,10 +355,10 @@ const headerStyles = StyleSheet.create({
   pointsBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
     backgroundColor: 'transparent',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
     borderRadius: 12,
   },
   pointsText: {
@@ -344,7 +370,7 @@ const headerStyles = StyleSheet.create({
 function FloatingNav({ tabs, state, navigation }) {
   const { colors, isDark } = useTheme();
   const [expanded, setExpanded] = React.useState(false);
-  
+
   const currentRouteName = state?.routes[state.index]?.name || 'Tasks';
 
   const toggle = () => {
@@ -358,12 +384,12 @@ function FloatingNav({ tabs, state, navigation }) {
 
   return (
     <View style={navStyles.container} pointerEvents="box-none">
-      <TouchableOpacity 
+      <TouchableOpacity
         activeOpacity={0.9}
         onPress={expanded ? undefined : toggle}
         style={[
           navStyles.pill,
-          { 
+          {
             backgroundColor: isDark ? 'rgba(30, 41, 59, 0.95)' : 'rgba(255, 255, 255, 0.95)',
             borderColor: colors.border,
             width: expanded ? '90%' : 60,
@@ -371,16 +397,16 @@ function FloatingNav({ tabs, state, navigation }) {
         ]}
       >
         {expanded ? (
-          <ScrollView 
-            horizontal 
+          <ScrollView
+            horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={[navStyles.scrollContent, { paddingRight: 20 }]}
           >
             {tabs.map(t => {
               const active = tabs[state?.index || 0]?.name === t.name;
               return (
-                <TouchableOpacity 
-                  key={t.name} 
+                <TouchableOpacity
+                  key={t.name}
                   onPress={() => goTo(t.name)}
                   style={[navStyles.iconWrap, active && { backgroundColor: colors.primary + '20', borderRadius: 12 }]}
                 >
@@ -392,14 +418,14 @@ function FloatingNav({ tabs, state, navigation }) {
           </ScrollView>
         ) : (
           <View style={navStyles.minimized}>
-            <Ionicons 
-              name={tabs[state?.index || 0]?.icon || 'menu'} 
-              size={28} 
-              color={colors.primary} 
+            <Ionicons
+              name={tabs[state?.index || 0]?.icon || 'menu'}
+              size={28}
+              color={colors.primary}
             />
           </View>
         )}
-        
+
         {expanded && (
           <TouchableOpacity onPress={toggle} style={navStyles.closeBtn}>
             <Ionicons name="chevron-down" size={20} color={colors.textMuted} />

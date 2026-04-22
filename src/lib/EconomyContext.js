@@ -11,11 +11,19 @@ const INITIAL_ECONOMY = {
   xp: 0,
   xpReq: 100,
   points: 0,
+  tokens: 0,
   freeRolls: 0,
   activeStreak: 0,
   missedStreak: 0,
-  bankedRewards: [], // Array of { minutes, xp, points, title, taskId, parentTaskId, etc }
+  bankedRewards: [],
+  vaultPrizes: [],
+  lastInflationUpdate: 0,
 };
+
+const BASE_ROLL_COST = 100;
+const INFLATION_THRESHOLD = 1000;
+const INFLATION_STEP = 100;
+const INFLATION_RATE = 5;
 
 export function EconomyProvider({ children }) {
   const { storagePrefix, user } = useProfile();
@@ -48,9 +56,12 @@ export function EconomyProvider({ children }) {
       try {
         const stored = await AsyncStorage.getItem(`${storagePrefix}economy`);
         if (stored) {
-          const parsed = JSON.parse(stored);
-          if (parsed && typeof parsed === 'object') {
-            setEconomy({ ...INITIAL_ECONOMY, ...parsed });
+          try {
+            const data = JSON.parse(stored);
+            if (data && data.tokens === undefined) data.tokens = 0;
+            setEconomy({ ...INITIAL_ECONOMY, ...data });
+          } catch (e) {
+            console.error('Failed to parse economy data', e);
           }
         }
       } catch (e) {
@@ -137,7 +148,7 @@ export function EconomyProvider({ children }) {
     };
   }, [economy, loaded, user, storagePrefix]);
 
-  const addReward = (gainedPoints, gainedXp) => {
+  const addReward = (gainedPoints, gainedXp, gainedTokens = 0) => {
     setEconomy(prev => {
       let newXp = prev.xp + gainedXp;
       let newLevel = prev.level;
@@ -153,7 +164,8 @@ export function EconomyProvider({ children }) {
 
       return {
         ...prev,
-        points: prev.points + gainedPoints,
+        points: (prev.points || 0) + gainedPoints,
+        tokens: (prev.tokens || 0) + gainedTokens,
         xp: newXp,
         level: newLevel,
         xpReq: newReq,
@@ -162,10 +174,11 @@ export function EconomyProvider({ children }) {
     });
   };
 
-  const removeReward = (lostPoints, lostXp) => {
+  const removeReward = (lostPoints, lostXp, lostTokens = 0) => {
     setEconomy(prev => {
       let newXp = prev.xp - lostXp;
-      let newPoints = prev.points - lostPoints;
+      let newPoints = (prev.points || 0) - lostPoints;
+      let newTokens = (prev.tokens || 0) - lostTokens;
       let newLevel = prev.level;
       let newReq = prev.xpReq;
       let newRolls = prev.freeRolls;
@@ -177,10 +190,15 @@ export function EconomyProvider({ children }) {
         newXp += newReq;
       }
       
-      if (newXp < 0) newXp = 0;
-      if (newPoints < 0) newPoints = 0;
-
-      return { ...prev, points: newPoints, xp: newXp, level: newLevel, xpReq: newReq, freeRolls: newRolls };
+      return {
+        ...prev,
+        points: Math.max(0, newPoints),
+        tokens: Math.max(0, newTokens),
+        xp: Math.max(0, newXp),
+        level: newLevel,
+        xpReq: newReq,
+        freeRolls: newRolls
+      };
     });
   };
 
@@ -243,12 +261,167 @@ export function EconomyProvider({ children }) {
     return rewards;
   };
 
+  const addVaultPrize = (title, linkedTaskIds, tokenCost = 0) => {
+    setEconomy(prev => ({
+      ...prev,
+      vaultPrizes: [
+        ...(prev.vaultPrizes || []),
+        {
+          id: 'prize_' + Date.now(),
+          title,
+          linkedTaskIds: Array.isArray(linkedTaskIds) ? linkedTaskIds : [linkedTaskIds],
+          completedTaskIds: [], // Track persistent completions for this specific reward
+          tokenCost: Number(tokenCost) || 0,
+          status: (linkedTaskIds && linkedTaskIds.length === 0) ? 'unlocked' : 'locked',
+          createdAt: new Date().toISOString()
+        }
+      ]
+    }));
+  };
+
+  const editVaultPrize = (id, title, linkedTaskIds, tokenCost = 0) => {
+    setEconomy(prev => ({
+      ...prev,
+      vaultPrizes: (prev.vaultPrizes || []).map(p => 
+        p.id === id ? { 
+          ...p, 
+          title, 
+          linkedTaskIds: Array.isArray(linkedTaskIds) ? linkedTaskIds : [linkedTaskIds],
+          tokenCost: Number(tokenCost) || 0,
+          // Reset completions if the linked tasks changed to avoid stale data
+          completedTaskIds: (p.linkedTaskIds || []).sort().join(',') === (linkedTaskIds || []).sort().join(',') 
+            ? p.completedTaskIds 
+            : [],
+          status: (linkedTaskIds && linkedTaskIds.length === 0) ? 'unlocked' : p.status
+        } : p
+      )
+    }));
+  };
+
+  const unlockPrizeByTaskId = (taskId, allTasks = []) => {
+    setEconomy(prev => {
+      const updated = (prev.vaultPrizes || []).map(p => {
+        if (p.status !== 'locked') return p;
+        
+        const isLinked = (p.linkedTaskIds || []).includes(String(taskId));
+        if (!isLinked) return p;
+
+        // Add this task to the prize's persistent completion record
+        const currentCompletions = p.completedTaskIds || [];
+        const newCompletions = Array.from(new Set([...currentCompletions, String(taskId)]));
+        
+        // Check if ALL linked tasks have been completed at least once since prize creation
+        const allDone = p.linkedTaskIds.every(id => newCompletions.includes(String(id)));
+        
+        if (allDone) {
+          return { ...p, completedTaskIds: newCompletions, status: 'unlocked', unlockedAt: new Date().toISOString() };
+        }
+        
+        return { ...p, completedTaskIds: newCompletions };
+      });
+      return { ...prev, vaultPrizes: updated };
+    });
+  };
+
+  const deleteVaultPrize = (prizeId) => {
+    setEconomy(prev => ({
+      ...prev,
+      vaultPrizes: (prev.vaultPrizes || []).filter(p => p.id !== prizeId)
+    }));
+  };
+
+  const contributeTokensToPrize = (prizeId, amount) => {
+    setEconomy(prev => {
+      const prize = (prev.vaultPrizes || []).find(p => p.id === prizeId);
+      if (!prize) return prev;
+      
+      const remaining = (prize.tokenCost || 0) - (prize.tokensPaid || 0);
+      const actualAmount = Math.min(amount, prev.tokens, remaining);
+      if (actualAmount <= 0) return prev;
+
+      const updatedPrizes = (prev.vaultPrizes || []).map(p => 
+        p.id === prizeId ? { ...p, tokensPaid: (p.tokensPaid || 0) + actualAmount } : p
+      );
+
+      return {
+        ...prev,
+        tokens: prev.tokens - actualAmount,
+        vaultPrizes: updatedPrizes
+      };
+    });
+  };
+
+  const claimVaultPrize = (prizeId) => {
+    setEconomy(prev => {
+      const prize = (prev.vaultPrizes || []).find(p => p.id === prizeId);
+      if (!prize) return prev;
+      
+      const remainingCost = (prize.tokenCost || 0) - (prize.tokensPaid || 0);
+      if (prev.tokens < remainingCost) return prev; 
+
+      return {
+        ...prev,
+        tokens: prev.tokens - Math.max(0, remainingCost),
+        vaultPrizes: (prev.vaultPrizes || []).filter(p => p.id !== prizeId)
+      };
+    });
+  };
+
+  const spendTokens = (amount) => {
+    if ((economy.tokens || 0) < amount) return false;
+    setEconomy(prev => ({ ...prev, tokens: prev.tokens - amount }));
+    return true;
+  };
+
+  const addTokens = (amount) => {
+    setEconomy(prev => ({ ...prev, tokens: (prev.tokens || 0) + amount }));
+  };
+
+  const getRollCost = () => {
+    const pts = economy.points || 0;
+    if (pts <= INFLATION_THRESHOLD) return BASE_ROLL_COST;
+    const inflation = Math.floor((pts - INFLATION_THRESHOLD) / INFLATION_STEP) * INFLATION_RATE;
+    return BASE_ROLL_COST + inflation;
+  };
+
+  const getReshuffleCost = () => {
+    return Math.floor(getRollCost() * 2);
+  };
+
+  const getPrizeEditCost = () => {
+    return Math.floor(getRollCost() * 3);
+  };
+
+  const calculateDiminishingPoints = (minutes) => {
+    if (minutes <= 0) return 0;
+    let pts = 0;
+    // Tier 1: 0-60 mins (2 pts/min)
+    const t1 = Math.min(minutes, 60);
+    pts += t1 * 2;
+    
+    // Tier 2: 60-180 mins (1 pt/min)
+    if (minutes > 60) {
+      const t2 = Math.min(minutes - 60, 120);
+      pts += t2 * 1;
+    }
+    
+    // Tier 3: 180+ mins (0.5 pt/min)
+    if (minutes > 180) {
+      const t3 = minutes - 180;
+      pts += t3 * 0.5;
+    }
+    
+    return Math.floor(pts);
+  };
+
   return (
     <EconomyContext.Provider value={{ 
       economy, addReward, spendPoints, removeReward, resetEconomy, 
       cheatEconomy, incrementActiveStreak, incrementMissedStreak, 
       addXP, addFreeRoll, bulkConsumeFreeRolls,
-      addBankedReward, claimBankedRewards
+      addBankedReward, claimBankedRewards,
+      addVaultPrize, editVaultPrize, unlockPrizeByTaskId, deleteVaultPrize, claimVaultPrize, contributeTokensToPrize,
+      addTokens, spendTokens, getRollCost, getReshuffleCost, getPrizeEditCost, calculateDiminishingPoints
     }}>
       {children}
     </EconomyContext.Provider>

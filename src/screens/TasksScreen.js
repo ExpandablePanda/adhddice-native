@@ -5,7 +5,7 @@ import {
   StyleSheet, Modal, KeyboardAvoidingView, Platform, Image,
   ScrollView, Alert, Animated, RefreshControl, AppState
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAudioPlayer } from 'expo-audio';
 import { Ionicons } from '@expo/vector-icons';
@@ -218,8 +218,6 @@ function groupByStatus(tasks, overstimulated = false) {
     const doneData = tasks.filter(t => {
       const h = t.statusHistory?.[todayKey];
       const isDoneToday = h === 'done' || h === 'did_my_best';
-      // Recurring tasks that rolled over to 'upcoming' should NOT be in the 'Done' section
-      if (t.frequency && t.status === 'upcoming') return false;
       return t.status === 'done' || t.status === 'did_my_best' || isDoneToday;
     });
 
@@ -719,9 +717,14 @@ function TaskRow({
   const [showStatusPicker, setShowStatusPicker] = useState(false);
   const [expanded, setExpanded] = useState(true);
   const [openSubPickers, setOpenSubPickers] = useState(new Set()); // Set of subtask IDs with pickers open
+  const navigation = useNavigation();
   const { notes } = useNotes();
   const { dayStartTime } = useSettings();
+  const { economy } = useEconomy();
 
+  const vault = economy.vaultPrizes || [];
+  const lockedPrize = vault.find(p => (p.linkedTaskIds || []).includes(String(task.id)) && p.status === 'locked');
+  const unlockedPrize = vault.find(p => (p.linkedTaskIds || []).includes(String(task.id)) && p.status === 'unlocked');
   const linkedNotesCount = (notes || []).filter(n => n.taskId === task.id).length;
 
   const currentStatusKey = task.status || 'pending';
@@ -809,6 +812,30 @@ function TaskRow({
                 >
                   <Ionicons name="rocket-outline" size={10} color="#8b5cf6" />
                   <Text style={[styles.metaChipText, { color: '#8b5cf6', fontWeight: '700' }]}>1st Step</Text>
+                </TouchableOpacity>
+              )}
+              {lockedPrize && (
+                <TouchableOpacity 
+                  style={[styles.metaChip, { backgroundColor: '#fef2f2', borderColor: '#ef4444', borderWidth: 1 }]}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    navigation.navigate('Roll', { openVault: true });
+                  }}
+                >
+                  <Ionicons name="lock-closed" size={10} color="#ef4444" />
+                  <Text style={[styles.metaChipText, { color: '#ef4444', fontWeight: '700' }]}>Prize Locked</Text>
+                </TouchableOpacity>
+              )}
+              {unlockedPrize && (
+                <TouchableOpacity 
+                  style={[styles.metaChip, { backgroundColor: '#f0fdf4', borderColor: '#059669', borderWidth: 1 }]}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    navigation.navigate('Roll', { openVault: true });
+                  }}
+                >
+                  <Ionicons name="gift" size={10} color="#059669" />
+                  <Text style={[styles.metaChipText, { color: '#059669', fontWeight: '700' }]}>Prize Unlocked!</Text>
                 </TouchableOpacity>
               )}
               {energy && <View style={[styles.metaChip, { backgroundColor: energy.bg }]}><Text style={[styles.metaChipText, { color: energy.color }]}>{energy.label}</Text></View>}
@@ -1096,7 +1123,7 @@ function TaskCard({ task, onConfirmStatus, onOpen, onHistory, isFlipped, onFlipC
         </Text>
         {(task.subtasks || []).length > 0 && (
           <View style={styles.cardSubtaskPreview}>
-            {task.subtasks.slice(0, 3).map((s, idx) => (
+            {(task.subtasks || []).slice(0, 3).map((s, idx) => (
                 <View style={[styles.cardSubtaskMiniRow, { marginBottom: 2 }]} key={s.id || s.title || idx}>
                   <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#ffffff', marginRight: 4 }} />
                   <Text style={[styles.cardSubtaskMiniText, { color: '#ffffff' }, (s.status === 'done' || s.status === 'did_my_best') && { textDecorationLine: 'line-through', color: 'rgba(255,255,255,0.8)' }]} numberOfLines={1}>
@@ -1104,7 +1131,7 @@ function TaskCard({ task, onConfirmStatus, onOpen, onHistory, isFlipped, onFlipC
                   </Text>
                 </View>
             ))}
-            {task.subtasks.length > 3 && <Text style={[styles.cardSubtaskMore, { color: '#ffffff', opacity: 0.8 }]}>+{task.subtasks.length - 3} more...</Text>}
+            {(task.subtasks || []).length > 3 && <Text style={[styles.cardSubtaskMore, { color: '#ffffff', opacity: 0.8 }]}>+{(task.subtasks || []).length - 3} more...</Text>}
           </View>
         )}
       </View>
@@ -1839,7 +1866,7 @@ function TaskDetailModal({ task, onSave, onDelete, onClose, onViewNote }) {
             </View>
           )}
 
-          {draft.subtasks.map((sub, idx) => (
+          {(draft.subtasks || []).map((sub, idx) => (
             <SubtaskItem
               key={sub.id}
               subtask={sub}
@@ -3153,7 +3180,9 @@ export default function TasksScreen() {
   if (filterStatus.length > 0) {
     filtered = filtered.filter(t => {
       if (filterStatus.includes('due_today')) {
-        if (t.dueDate === todayMDY) return true;
+        const h = t.statusHistory?.[todayStr];
+        const isDoneToday = h === 'done' || h === 'did_my_best';
+        if (t.dueDate === todayMDY || isDoneToday) return true;
       }
       if (filterStatus.includes(t.status)) return true;
       if (filterStatus.includes('done')) {
@@ -3947,6 +3976,7 @@ export default function TasksScreen() {
               onOpen={setEditingTask}
               onHistory={t => setHistoryTask(t.id)}
               onConfirmStatus={confirmStatus}
+              onPrizePress={() => navigation.navigate('Roll', { openVault: true })}
             />
       )}
 
@@ -4144,9 +4174,9 @@ const styles = StyleSheet.create({
   screen:       { flex: 1, backgroundColor: '#fff' },
 
   // Header
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: Platform.OS === 'ios' ? 12 : 20, paddingBottom: 8 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: Platform.OS === 'ios' ? 4 : 8, paddingBottom: 8 },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerTitle: { fontSize: 24, fontWeight: '700', color: '#111827' },
+  headerTitle: { fontSize: 24, fontWeight: '800', color: '#111827' },
   finalXp: {
     fontSize: 16,
     fontWeight: '700',

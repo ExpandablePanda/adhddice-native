@@ -23,7 +23,12 @@ import Dice3D from '../components/Dice3D';
 const SCREEN_W = Dimensions.get('window').width;
 
 const DEFAULT_POOLS = {
-  master: ['Bank a free roll', 'Bank 2 free rolls', 'Bank 3 free rolls', 'If Next Roll is Over 17 - Bank 5 rolls', 'Choose Any Small Prize'],
+  master: [
+    'Bank a free roll', 'Bank 2 free rolls', 'Bank 3 free rolls', 
+    'If Next Roll is Over 17 - Bank 5 rolls', 'If Next Roll is Over 17 - 10 Tokens', 
+    'Choose Any Small Prize', 'Choose Any Big Prize',
+    '1 Token', '2 Tokens', '3 Tokens', '4 Tokens', '5 Tokens'
+  ],
   small: ['☕ Coffee break', '🎵 Pick a song', '🍫 Snack time', '📱 5 min phone break', '🚶 Take a walk', '🧘 Quick meditation', '🎨 Doodle break', '🎉 Dance break'],
   big: ['🎮 1 hour gaming', '📺 Watch an episode', '🍕 Order takeout tonight', '💤 Power nap', '🛒 Buy something small', '📖 Read a chapter', '🧊 Ice cream reward', '💪 Skip a chore today', '🌿 Go outside for 30 min'],
 };
@@ -50,28 +55,28 @@ function generateDailyPool(pools) {
      return res;
   };
 
-  const chosenMaster = getS(master, 2);
-  const chosenSmall = getS(small, 7);
-  const chosenBig = getS(big, 7);
+  const chosenMaster = getS(master, 4);
+  const chosenSmall = getS(small, 6);
+  const chosenBig = getS(big, 6);
 
   return {
      1: "No Prize",
      2: chosenMaster[0],
      3: chosenMaster[1],
-     4: chosenSmall[0],
-     5: chosenSmall[1],
-     6: chosenSmall[2],
-     7: chosenSmall[3],
-     8: chosenSmall[4],
-     9: chosenSmall[5],
-     10: chosenSmall[6],
-     11: chosenBig[0],
-     12: chosenBig[1],
-     13: chosenBig[2],
-     14: chosenBig[3],
-     15: chosenBig[4],
-     16: chosenBig[5],
-     17: chosenBig[6],
+     4: chosenMaster[2],
+     5: chosenMaster[3],
+     6: chosenSmall[0],
+     7: chosenSmall[1],
+     8: chosenSmall[2],
+     9: chosenSmall[3],
+     10: chosenSmall[4],
+     11: chosenSmall[5],
+     12: chosenBig[0],
+     13: chosenBig[1],
+     14: chosenBig[2],
+     15: chosenBig[3],
+     16: chosenBig[4],
+     17: chosenBig[5],
      18: "[Swap] Replace a prize with an unselected prize",
      19: "[Multiplier] Double Next Prize!",
      20: "Any Prize! Choose anything from the global pool",
@@ -107,7 +112,7 @@ function PrizeManagerModal({ visible, pools, onSave, onClose, onDevWipe }) {
   function addPrize() {
     const trimmed = newPrize.trim();
     if (!trimmed) return;
-    setDraft(d => ({ ...d, [activeTab]: [...Math.max(d[activeTab]||[]), trimmed] }));
+    setDraft(d => ({ ...d, [activeTab]: [...(d[activeTab]||[]), trimmed] }));
     setNewPrize('');
   }
 
@@ -149,6 +154,10 @@ function PrizeManagerModal({ visible, pools, onSave, onClose, onDevWipe }) {
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        style={{ flex: 1 }}
+      >
       <View style={[styles.managerScreen, { paddingTop: insets.top }]}>
         {/* Header */}
         <View style={styles.managerHeader}>
@@ -249,30 +258,502 @@ function PrizeManagerModal({ visible, pools, onSave, onClose, onDevWipe }) {
           ))}
         </ScrollView>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// MAIN SCREEN
+// VAULT MODAL
 // ═════════════════════════════════════════════════════════════════════════════
 
-export default function DiceScreen() {
-  const { economy, spendPoints, addFreeRoll } = useEconomy();
+function VaultModal({ visible, onClose }) {
+  const insets = useSafeAreaInsets();
+  const { 
+    economy, addVaultPrize, editVaultPrize, deleteVaultPrize, 
+    claimVaultPrize, spendPoints, contributeTokensToPrize,
+    getRollCost, getReshuffleCost, getPrizeEditCost
+  } = useEconomy();
+  const { tasks } = useTasks();
+  const [newTitle, setNewTitle] = useState('');
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingPrizeId, setEditingPrizeId] = useState(null);
+  const [newTokenCost, setNewTokenCost] = useState('0');
+  const [payPrize, setPayPrize] = useState(null);
+  const [payInput, setPayInput] = useState('');
+
+  const vault = economy.vaultPrizes || [];
+
+  function renderPrizeCard(prize) {
+    const prizeTaskIds = prize.linkedTaskIds || [];
+    const completedCount = (prize.completedTaskIds || []).length;
+    const totalCount = prizeTaskIds.length;
+    const isUnlocked = prize.status === 'unlocked';
+    const remaining = (prize.tokenCost || 0) - (prize.tokensPaid || 0);
+    const canClaim = remaining <= 0;
+
+    const prizeTasks = prizeTaskIds.map(id => {
+      const found = tasks.find(t => String(t.id) === String(id));
+      return found || { id, title: 'Unknown Task', status: 'unknown' };
+    });
+
+    const isReadyToClaim = isUnlocked && canClaim;
+    const isTokenStore = prizeTaskIds.length === 0;
+
+    return (
+      <View key={prize.id} style={{ 
+        backgroundColor: isReadyToClaim ? '#f0fdf4' : (isTokenStore ? '#eef2ff' : colors.surface),
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 12,
+        borderWidth: 1.5,
+        borderColor: isReadyToClaim ? '#059669' : (isTokenStore ? '#6366f1' : colors.border),
+        shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, elevation: 2
+      }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View style={{ 
+            width: 44, height: 44, borderRadius: 22, 
+            backgroundColor: isReadyToClaim ? '#059669' : (isTokenStore ? '#6366f1' : '#f3f4f6'), 
+            alignItems: 'center', justifyContent: 'center', marginRight: 16
+          }}>
+            <Ionicons name={isReadyToClaim ? "gift" : (isTokenStore ? "wallet" : "lock-closed")} size={22} color={isReadyToClaim || isTokenStore ? "#fff" : "#6b7280"} />
+          </View>
+          
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 17, fontWeight: '800', color: colors.textPrimary }}>{prize.title}</Text>
+            {prizeTaskIds.length > 0 && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Ionicons name="link-outline" size={14} color={isUnlocked ? "#059669" : colors.textMuted} />
+                <Text style={{ fontSize: 13, color: isUnlocked ? "#059669" : colors.textMuted, fontWeight: '500' }}>
+                  {isUnlocked ? 'Task Goal Met' : `${completedCount}/${totalCount} Tasks`}
+                </Text>
+              </View>
+            )}
+            {(prize.tokenCost || 0) > 0 && (
+              <View style={{ marginTop: 8, marginRight: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="wallet" size={10} color="#8b5cf6" />
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#8b5cf6' }}>
+                      {remaining > 0 ? `${remaining} Left` : 'Paid'}
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 9, color: colors.textMuted }}>{Math.round(((prize.tokensPaid || 0) / (prize.tokenCost || 1)) * 100)}%</Text>
+                </View>
+                <View style={{ height: 4, width: '100%', backgroundColor: '#f3f4f6', borderRadius: 2, overflow: 'hidden' }}>
+                  <View style={{ height: '100%', width: `${Math.min(100, ((prize.tokensPaid || 0) / (prize.tokenCost || 1)) * 100)}%`, backgroundColor: '#8b5cf6' }} />
+                </View>
+              </View>
+            )}
+          </View>
+          
+          <View style={{ alignItems: 'flex-end', gap: 8 }}>
+            {isUnlocked && canClaim ? (
+              <TouchableOpacity 
+                onPress={() => {
+                  Alert.alert('Claim Reward', `Claim your "${prize.title}" reward now?`, [
+                    { text: 'Not yet', style: 'cancel' },
+                    { text: 'Claim!', onPress: () => claimVaultPrize(prize.id) }
+                  ]);
+                }}
+                style={{ backgroundColor: '#059669', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 }}
+              >
+                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '800' }}>Claim</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                {remaining > 0 && (
+                  <TouchableOpacity 
+                    onPress={() => {
+                      if (economy.tokens <= 0) {
+                        Alert.alert('No Tokens', "You don't have any tokens to contribute yet!");
+                        return;
+                      }
+                      setPayPrize(prize);
+                      setPayInput(String(Math.min(economy.tokens, remaining)));
+                    }}
+                    style={{ backgroundColor: '#8b5cf6', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 }}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>Pay</Text>
+                  </TouchableOpacity>
+                )}
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <TouchableOpacity onPress={() => startEditing(prize)} style={{ padding: 6 }}>
+                    <Ionicons name="pencil" size={18} color={colors.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => {
+                    Alert.alert('Delete Prize', 'Remove this prize from the vault?', [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Delete', style: 'destructive', onPress: () => deleteVaultPrize(prize.id) }
+                    ]);
+                  }} style={{ padding: 6 }}>
+                    <Ionicons name="trash-outline" size={20} color={colors.textMuted} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {!isUnlocked && prizeTasks.length > 0 && (
+          <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border }}>
+            {prizeTasks.map(t => {
+              const isFinished = (prize.completedTaskIds || []).includes(String(t.id));
+              return (
+                <View key={t.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                  <Ionicons name={isFinished ? "checkmark-circle" : "ellipse-outline"} size={14} color={isFinished ? "#10b981" : colors.textMuted} style={{ marginRight: 8 }} />
+                  <Text style={{ fontSize: 12, color: isFinished ? "#10b981" : colors.textSecondary, textDecorationLine: isFinished ? 'line-through' : 'none' }}>
+                    {t.title}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  const linkableTasks = tasks.filter(t => t.status !== 'done' && t.status !== 'did_my_best');
+  
+  const filteredTasks = searchQuery.trim() 
+    ? linkableTasks.filter(t => t.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    : linkableTasks;
+
+  function toggleTask(id) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function handleSave() {
+    if (!newTitle.trim()) {
+      Alert.alert('Missing Title', 'What is the reward?');
+      return;
+    }
+    if (selectedIds.size === 0 && Number(newTokenCost) <= 0) {
+      Alert.alert('Missing Cost', 'A prize must either be linked to tasks OR have a token cost.');
+      return;
+    }
+
+    if (editingPrizeId) {
+      editVaultPrize(editingPrizeId, newTitle.trim(), Array.from(selectedIds), Number(newTokenCost));
+    } else {
+      addVaultPrize(newTitle.trim(), Array.from(selectedIds), Number(newTokenCost));
+    }
+
+    setNewTitle('');
+    setSelectedIds(new Set());
+    setNewTokenCost('0');
+    setSearchQuery('');
+    setEditingPrizeId(null);
+    setShowAddForm(false);
+  }
+
+  function startEditing(prize) {
+    const editCost = getPrizeEditCost();
+    Alert.alert(
+      'Unlock Edit Mode',
+      `Spend ${editCost} Points to change this locked reward and its tasks?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: `Spend ${editCost} Pts`, 
+          onPress: () => {
+            if (spendPoints(editCost)) {
+              setEditingPrizeId(prize.id);
+              setNewTitle(prize.title);
+              setSelectedIds(new Set(prize.linkedTaskIds || []));
+              setNewTokenCost(String(prize.tokenCost || 0));
+              setShowAddForm(true);
+            }
+          } 
+        }
+      ]
+    );
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose} transparent={false}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        style={{ flex: 1 }}
+      >
+      <View style={[styles.managerScreen, { paddingTop: insets.top, backgroundColor: colors.background }]}>
+        <View style={styles.managerHeader}>
+          <TouchableOpacity onPress={onClose} style={styles.iconBtn}>
+            <Ionicons name="close" size={24} color={colors.textSecondary} />
+          </TouchableOpacity>
+          <View style={{ alignItems: 'center' }}>
+            <Text style={styles.managerTitle}>Prize Vault</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Ionicons name="wallet" size={12} color="#8b5cf6" />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#8b5cf6' }}>{economy.tokens || 0} Tokens</Text>
+            </View>
+          </View>
+          <TouchableOpacity onPress={() => {
+            if (showAddForm) {
+              setEditingPrizeId(null);
+              setNewTitle('');
+              setSelectedIds(new Set());
+            }
+            setShowAddForm(!showAddForm);
+          }} style={styles.savePrizesBtn}>
+            <Text style={styles.savePrizesText}>{showAddForm ? 'Cancel' : 'Add Prize'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView contentContainerStyle={[styles.managerBody, { paddingBottom: 40 }]}>
+          {showAddForm && (
+            <View style={{ backgroundColor: colors.surface, padding: 16, borderRadius: 16, marginBottom: 24, borderWidth: 1, borderColor: colors.border, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 3 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <Text style={{ fontWeight: '800', color: colors.textPrimary, fontSize: 16 }}>
+                  {editingPrizeId ? 'Edit Locked Reward' : 'Create a Locked Reward'}
+                </Text>
+                {editingPrizeId && (
+                  <View style={{ backgroundColor: '#fef3c7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#b45309' }}>EDITING ({getPrizeEditCost()} Pts Spent)</Text>
+                  </View>
+                )}
+              </View>
+              
+              <Text style={{ fontWeight: '600', color: colors.textSecondary, fontSize: 13, marginBottom: 6, textTransform: 'uppercase' }}>Reward Name</Text>
+              <TextInput
+                style={[styles.addInput, { marginBottom: 12, width: '100%', height: 50, fontSize: 16 }]}
+                placeholder="e.g. $20 Magic Cards"
+                placeholderTextColor={colors.textMuted}
+                value={newTitle}
+                onChangeText={setNewTitle}
+              />
+
+              <Text style={{ fontWeight: '600', color: colors.textSecondary, fontSize: 13, marginBottom: 6, textTransform: 'uppercase' }}>Token Cost</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 12 }}>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#f3f4f6', borderRadius: 12, paddingHorizontal: 12 }}>
+                  <Ionicons name="wallet" size={18} color="#8b5cf6" />
+                  <TextInput
+                    style={{ flex: 1, height: 50, paddingHorizontal: 8, color: colors.textPrimary, fontSize: 16, fontWeight: '700' }}
+                    keyboardType="numeric"
+                    value={newTokenCost}
+                    onChangeText={setNewTokenCost}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 11, color: colors.textMuted }}>Tokens required to claim. Set > 0 to skip linking tasks if you prefer.</Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text style={{ fontWeight: '600', color: colors.textSecondary, fontSize: 13, textTransform: 'uppercase' }}>Link to Tasks ({selectedIds.size})</Text>
+                {selectedIds.size > 0 && (
+                  <TouchableOpacity onPress={() => setSelectedIds(new Set())}>
+                    <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '700' }}>Clear All</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f3f4f6', borderRadius: 10, paddingHorizontal: 12, marginBottom: 10 }}>
+                <Ionicons name="search" size={16} color={colors.textMuted} />
+                <TextInput
+                  style={{ flex: 1, height: 40, paddingHorizontal: 8, color: colors.textPrimary, fontSize: 14 }}
+                  placeholder="Search tasks..."
+                  placeholderTextColor={colors.textMuted}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery('')}>
+                    <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {linkableTasks.length === 0 ? (
+                <Text style={{ color: colors.textMuted, fontSize: 13, marginBottom: 20, fontStyle: 'italic' }}>No active tasks. You can still set a Token Cost above!</Text>
+              ) : (
+                <View style={{ marginBottom: 20, maxHeight: 250, borderWidth: 1, borderColor: colors.border, borderRadius: 12, overflow: 'hidden' }}>
+                  <ScrollView nestedScrollEnabled style={{ backgroundColor: '#f9fafb' }}>
+                    {filteredTasks.length === 0 ? (
+                      <View style={{ padding: 20, alignItems: 'center' }}>
+                        <Text style={{ color: colors.textMuted, fontSize: 13 }}>No tasks match your search.</Text>
+                      </View>
+                    ) : (
+                      filteredTasks.map(t => {
+                        const isSelected = selectedIds.has(t.id);
+                        return (
+                          <TouchableOpacity 
+                            key={t.id} 
+                            onPress={() => toggleTask(t.id)}
+                            style={{ 
+                              padding: 14, 
+                              borderBottomWidth: 1, 
+                              borderBottomColor: colors.border,
+                              backgroundColor: isSelected ? colors.primary + '15' : 'transparent',
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              justifyContent: 'space-between'
+                            }}
+                          >
+                            <Text style={{ color: isSelected ? colors.primary : colors.textPrimary, fontWeight: isSelected ? '700' : '500', flex: 1 }}>
+                              {t.title}
+                            </Text>
+                            <Ionicons 
+                              name={isSelected ? "checkbox" : "square-outline"} 
+                              size={20} 
+                              color={isSelected ? colors.primary : colors.textMuted} 
+                            />
+                          </TouchableOpacity>
+                        );
+                      })
+                    )}
+                  </ScrollView>
+                </View>
+              )}
+
+              <TouchableOpacity 
+                style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center', shadowColor: colors.primary, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 }}
+                onPress={handleSave}
+              >
+                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>
+                  {editingPrizeId ? 'Update Locked Reward' : 'Lock Reward in Vault'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {vault.length === 0 ? (
+            <View style={{ alignItems: 'center', marginTop: 60, opacity: 0.6 }}>
+              <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                <Ionicons name="lock-closed" size={40} color={colors.textMuted} />
+              </View>
+              <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 18 }}>The Vault is Empty</Text>
+              <Text style={{ color: colors.textMuted, marginTop: 8, textAlign: 'center', paddingHorizontal: 40, lineHeight: 20 }}>
+                Give yourself a major incentive for that one task you've been putting off.
+              </Text>
+            </View>
+          ) : (
+            <View>
+              {vault.filter(p => (p.linkedTaskIds || []).length === 0).length > 0 && (
+                <>
+                  <Text style={[styles.sectionLabel, { marginBottom: 12 }]}>Token Store</Text>
+                  {vault.filter(p => (p.linkedTaskIds || []).length === 0).map(prize => renderPrizeCard(prize))}
+                </>
+              )}
+
+              {vault.filter(p => (p.linkedTaskIds || []).length > 0).length > 0 && (
+                <>
+                  <Text style={[styles.sectionLabel, { marginTop: 24, marginBottom: 12 }]}>Your Vault</Text>
+                  {vault.filter(p => (p.linkedTaskIds || []).length > 0).map(prize => renderPrizeCard(prize))}
+                </>
+              )}
+            </View>
+          )}
+        </ScrollView>
+
+        <Modal visible={!!payPrize} transparent animationType="fade" onRequestClose={() => setPayPrize(null)}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+            <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 24, width: '100%', maxWidth: 320, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 10, elevation: 5 }}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary, marginBottom: 4 }}>Contribute Tokens</Text>
+              <Text style={{ fontSize: 13, color: colors.textMuted, marginBottom: 20 }}>{payPrize?.title}</Text>
+              
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 }}>
+                <View>
+                  <Text style={{ fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', fontWeight: '700' }}>Balance</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="wallet" size={14} color="#8b5cf6" />
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: '#8b5cf6' }}>{economy.tokens}</Text>
+                  </View>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', fontWeight: '700' }}>Goal Remaining</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="wallet" size={14} color={colors.textPrimary} />
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textPrimary }}>
+                      {(payPrize?.tokenCost || 0) - (payPrize?.tokensPaid || 0)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={{ backgroundColor: '#f3f4f6', borderRadius: 12, padding: 4, flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
+                <TextInput
+                  style={{ flex: 1, height: 50, paddingHorizontal: 16, fontSize: 24, fontWeight: '800', color: '#8b5cf6', textAlign: 'center' }}
+                  keyboardType="numeric"
+                  autoFocus
+                  value={payInput}
+                  onChangeText={setPayInput}
+                  placeholder="0"
+                />
+                <TouchableOpacity 
+                  onPress={() => setPayInput(String(economy.tokens))}
+                  style={{ backgroundColor: '#8b5cf6', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, marginRight: 4 }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800' }}>MAX</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <TouchableOpacity 
+                  style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: '#f3f4f6', alignItems: 'center' }}
+                  onPress={() => setPayPrize(null)}
+                >
+                  <Text style={{ fontWeight: '700', color: colors.textSecondary }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={{ flex: 2, paddingVertical: 14, borderRadius: 12, backgroundColor: '#8b5cf6', alignItems: 'center' }}
+                  onPress={() => {
+                    const amt = parseInt(payInput, 10);
+                    if (isNaN(amt) || amt <= 0) return;
+                    contributeTokensToPrize(payPrize.id, amt);
+                    setPayPrize(null);
+                  }}
+                >
+                  <Text style={{ fontWeight: '800', color: '#fff' }}>Confirm Payment</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MAIN SCREEN - Force Metro Refresh
+// ═════════════════════════════════════════════════════════════════════════════
+
+export default function DiceScreen({ navigation, route }) {
+  const { economy, spendPoints, addFreeRoll, addTokens, getRollCost, getReshuffleCost, getPrizeEditCost } = useEconomy();
   const { user, storagePrefix } = useProfile();
 
   const [pools, setPools]           = useState(DEFAULT_POOLS);
   const [dailyBoard, setDailyBoard] = useState(null); // the generated faceMap
   const [multiplier, setMultiplier] = useState(1);
   const [bank5IfOver17, setBank5IfOver17] = useState(0);
+  const [tokensIfOver17, setTokensIfOver17] = useState(0);
   const [rolling, setRolling]       = useState(false);
   const [result, setResult]         = useState(null); // { face, prize }
   const [showManager, setShowManager] = useState(false);
+  const [showVault, setShowVault] = useState(false);
   const { startBreak, breakTimer, setBreakTimer, adjustBreakTime, linkPrizeToBreak } = useTasks();
   const [breakInput, setBreakInput] = useState('10');
   const [showPrizeLinker, setShowPrizeLinker] = useState(false);
   const [pendingPrize, setPendingPrize] = useState(null); // { name, count }
   const [modalSelection, setModalSelection] = useState(null); // { name, count }
+  const [showInflationInfo, setShowInflationInfo] = useState(false);
+
+  useEffect(() => {
+    if (route.params?.openVault) {
+      setShowVault(true);
+      navigation.setParams({ openVault: undefined });
+    }
+  }, [route.params?.openVault]);
 
   
   const rollPlayer = useAudioPlayer(require('../../assets/dice-roll.wav'));
@@ -353,6 +834,7 @@ export default function DiceScreen() {
           if (data.dailyBoard) boardData = data.dailyBoard;
           if (data.multiplier) setMultiplier(data.multiplier);
           if (data.bank5IfOver17) setBank5IfOver17(data.bank5IfOver17);
+          if (data.tokensIfOver17) setTokensIfOver17(data.tokensIfOver17);
         } catch (e) { console.error('Failed to parse dice data', e); }
       }
       // Cloud is source of truth
@@ -379,14 +861,32 @@ export default function DiceScreen() {
             if (cloud.dailyBoard) boardData = cloud.dailyBoard;
             if (cloud.multiplier) setMultiplier(cloud.multiplier);
             if (cloud.bank5IfOver17) setBank5IfOver17(cloud.bank5IfOver17);
+            if (cloud.tokensIfOver17) setTokensIfOver17(cloud.tokensIfOver17);
           }
         } catch (e) { console.log('Dice cloud sync skipped', e); }
       }
+      // Migration: Ensure Tokens and Choice prizes are in the Master pool for existing users
+      if (currentPools && currentPools.master) {
+        const requiredMaster = [
+          '1 Token', '2 Tokens', '3 Tokens', '4 Tokens', '5 Tokens', 
+          'Choose Any Small Prize', 'Choose Any Big Prize',
+          'If Next Roll is Over 17 - Bank 5 rolls', 'If Next Roll is Over 17 - 10 Tokens'
+        ];
+        let missing = requiredMaster.filter(t => !currentPools.master.includes(t));
+        if (missing.length > 0) {
+          currentPools = {
+            ...currentPools,
+            master: [...currentPools.master, ...missing]
+          };
+        }
+      }
+
       if (currentPools) setPools(currentPools);
       
       const today = new Date().toDateString();
-      if (!boardData || boardData.date !== today) {
-        boardData = { date: today, map: generateDailyPool(currentPools) };
+      const BOARD_VERSION = 2; // Incremented for 2-5 Master prizes
+      if (!boardData || boardData.date !== today || boardData.v !== BOARD_VERSION) {
+        boardData = { date: today, map: generateDailyPool(currentPools), v: BOARD_VERSION };
       }
       setDailyBoard(boardData);
       setLoaded(true);
@@ -429,7 +929,7 @@ export default function DiceScreen() {
   useEffect(() => {
     if (!loaded || !dailyBoard) return;
     const localKey = `${storagePrefix}dice_data`;
-    const data = { pools, history, rewardPool, dailyBoard, multiplier, bank5IfOver17 };
+    const data = { pools, history, rewardPool, dailyBoard, multiplier, bank5IfOver17, tokensIfOver17 };
     AsyncStorage.setItem(localKey, JSON.stringify(data)).catch(e => console.error('Failed to save dice data', e));
     if (user) {
       supabase.from('user_dice')
@@ -489,7 +989,13 @@ export default function DiceScreen() {
       else if (basePrize.includes('Bank 2 free rolls')) addFreeRoll(2 * count);
       else if (basePrize.includes('Bank 3 free rolls')) addFreeRoll(3 * count);
       else if (basePrize.includes('If Next Roll is Over 17 - Bank 5 rolls')) setBank5IfOver17(c => c + count);
+      else if (basePrize.includes('If Next Roll is Over 17 - 10 Tokens')) setTokensIfOver17(c => c + count);
       else if (basePrize.includes('Choose Any Small Prize')) setShowAnyPicker({ type: 'small', count });
+      else if (basePrize.includes('Choose Any Big Prize')) setShowAnyPicker({ type: 'big', count });
+      else if (basePrize.includes('Token')) {
+         const amt = parseInt(basePrize);
+         if (!isNaN(amt)) addTokens(amt * count);
+      }
       else {
          setRewardPool(pool => {
             const current = pool[finalPrize];
@@ -553,14 +1059,41 @@ export default function DiceScreen() {
     let basePrize = dailyBoard.map[face] || 'Fallback Prize';
     let currentMultiplier = multiplier;
 
-    let triggeredBank5 = 0;
-    if (bank5IfOver17 > 0 && face > 17) {
-       triggeredBank5 = 5 * bank5IfOver17;
-       addFreeRoll(triggeredBank5);
+    // HANDLE RESULT ROLLS (Jackpot Mechanics)
+    const isResultRoll = bank5IfOver17 > 0 || tokensIfOver17 > 0;
+    if (isResultRoll) {
+       let winTitle = "";
+       let won = false;
+       if (face > 17) {
+          won = true;
+          if (bank5IfOver17 > 0) {
+             const rolls = 5 * bank5IfOver17;
+             addFreeRoll(rolls);
+             winTitle = `🎯 JACKPOT! +${rolls} Free Rolls!`;
+          }
+          if (tokensIfOver17 > 0) {
+             const tks = 10 * tokensIfOver17;
+             addTokens(tks);
+             winTitle = winTitle ? `${winTitle} & +${tks} Tokens!` : `🎯 JACKPOT! +${tks} Tokens!`;
+          }
+       } else {
+          winTitle = "No reward this time. 💀";
+       }
+       
+       setBank5IfOver17(0);
+       setTokensIfOver17(0);
+       setResult({ face, prize: winTitle, isJackpot: true });
+       setHistory(h => [{ face, prize: winTitle, time: Date.now() }, ...h].slice(0, 20));
+       
+       if (currentMultiplier > 1) setMultiplier(1);
+       return; // Exit early: Result rolls don't grant the face prize
     }
-    if (bank5IfOver17 > 0) setBank5IfOver17(0);
 
     let displayPrize = basePrize;
+    let triggeredBank5 = 0;
+    if (basePrize.includes('Bank a free roll')) triggeredBank5 = 1 * currentMultiplier;
+    else if (basePrize.includes('Bank 2 free rolls')) triggeredBank5 = 2 * currentMultiplier;
+    else if (basePrize.includes('Bank 3 free rolls')) triggeredBank5 = 3 * currentMultiplier;
 
     let resultText = displayPrize;
     if (triggeredBank5 > 0) resultText += ` 🎯(+${triggeredBank5} Free Rolls!)`;
@@ -600,9 +1133,11 @@ export default function DiceScreen() {
 
     // Deduct points/rolls ONLY if not a bonus multiplier roll
     if (multiplier === 1) {
-      if (!spendPoints(100)) {
+      const isResultRoll = bank5IfOver17 > 0 || tokensIfOver17 > 0;
+      const rollCost = getRollCost();
+      if (!isResultRoll && !spendPoints(rollCost)) {
         setRolling(false);
-        Alert.alert('Not enough Points', 'You need 100 Points or a Free Roll to roll for rewards.');
+        Alert.alert('Not enough Points', `You need ${rollCost} Points or a Free Roll to roll for rewards.`);
         setShowRealRollModal(false);
         return;
       }
@@ -630,9 +1165,10 @@ export default function DiceScreen() {
     setRolling(true);
 
     if (multiplier === 1) {
-      if (!spendPoints(100)) {
+      const isResultRoll = bank5IfOver17 > 0 || tokensIfOver17 > 0;
+      if (!isResultRoll && !spendPoints(getRollCost())) {
         setRolling(false);
-        Alert.alert('Not enough Points', 'You need 100 Points or a Free Roll to roll for rewards.');
+        Alert.alert('Not enough Points', `You need ${getRollCost()} Points or a Free Roll to roll for rewards.`);
         return;
       }
     }
@@ -663,6 +1199,9 @@ export default function DiceScreen() {
     setDailyBoard({ date: new Date().toDateString(), map: generateDailyPool(newPools) });
     setShowManager(false);
   }
+
+  const vault = economy.vaultPrizes || [];
+  const unlockedCount = vault.filter(p => p.status === 'unlocked').length;
 
   function claimReward(prize, count = 1) {
     setRewardPool(pool => {
@@ -727,10 +1266,11 @@ export default function DiceScreen() {
     const totalUnclaimed = poolEntries.reduce((acc, [, val]) => acc + (typeof val === 'object' ? val.count : val), 0);
 
   function handleManualShuffle() {
-    const msg = 'Would you like to manually randomize the entire custom D20 Board? This costs 200 Points.';
+    const shuffleCost = getReshuffleCost();
+    const msg = `Would you like to manually randomize the entire custom D20 Board? This costs ${shuffleCost} Points.`;
     
     const performShuffle = () => {
-      const success = spendPoints(200);
+      const success = spendPoints(shuffleCost);
       if (success) {
         const newBoard = { date: new Date().toDateString(), map: generateDailyPool(pools) };
         setDailyBoard(newBoard);
@@ -739,8 +1279,8 @@ export default function DiceScreen() {
           broadcastRef.current.postMessage({ type: 'BOARD_SYNC', board: newBoard });
         }
       } else {
-        if (Platform.OS === 'web') window.alert('Not Enough Points: You need 200 points to forcefully reshuffle the board.');
-        else Alert.alert('Not Enough Points', 'You need 200 points to forcefully reshuffle the board.');
+        if (Platform.OS === 'web') window.alert(`Not Enough Points: You need ${shuffleCost} points to forcefully reshuffle the board.`);
+        else Alert.alert('Not Enough Points', `You need ${shuffleCost} points to forcefully reshuffle the board.`);
       }
     };
 
@@ -754,7 +1294,7 @@ export default function DiceScreen() {
         msg,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Shuffle (200 pts)', onPress: performShuffle }
+          { text: `Shuffle (${shuffleCost} pts)`, onPress: performShuffle }
         ]
       );
     }
@@ -772,12 +1312,12 @@ export default function DiceScreen() {
            if (face === 20) prize = '[Omni] Choose Any Action';
 
            const isActive = !isModal && result && result.face === face;
-           const isMaster = face === 2 || face === 3;
-           const isSmall = face >= 4 && face <= 10;
-           const isBig = face >= 11 && face <= 17;
+           const isMaster = face >= 2 && face <= 5;
+           const isSmall = face >= 6 && face <= 11;
+           const isBig = face >= 12 && face <= 17;
 
-           let bg = '#374151'; 
-           if (isMaster) bg = '#fbbf24'; 
+           let bg = '#374151'; // Dark Grey for default (Master 2-5)
+           if (face === 1) bg = '#ef4444'; // Red for Face 1
            if (isSmall) bg = '#34d399'; 
            if (isBig) bg = '#a78bfa'; 
            if (face >= 18) bg = '#6366f1'; 
@@ -838,6 +1378,18 @@ export default function DiceScreen() {
         onScroll={handleScroll}
         scrollEventThrottle={16}
       >
+          <PrizeManagerModal 
+            visible={showManager} 
+            pools={pools} 
+            onSave={savePrizes} 
+            onClose={() => setShowManager(false)} 
+            onDevWipe={() => {
+              cheatEconomy();
+              savePrizes(DEFAULT_POOLS);
+            }}
+          />
+
+          <VaultModal visible={showVault} onClose={() => setShowVault(false)} />
 
         <View style={styles.header}>
           <View style={styles.headerLeft}>
@@ -850,6 +1402,14 @@ export default function DiceScreen() {
             </View>
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity 
+              style={[styles.manageBtn, unlockedCount > 0 && { backgroundColor: '#d1fae5', borderColor: '#059669' }]} 
+              onPress={() => setShowVault(true)}
+            >
+              <Ionicons name={unlockedCount > 0 ? "gift" : "lock-closed-outline"} size={18} color={unlockedCount > 0 ? "#059669" : colors.primary} />
+              <Text style={[styles.manageBtnText, unlockedCount > 0 && { color: '#059669' }]}>Vault</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity style={styles.manageBtn} onPress={() => setShowManager(true)}>
               <Ionicons name="settings-outline" size={18} color={colors.primary} />
               <Text style={styles.manageBtnText}>Prizes</Text>
@@ -859,7 +1419,12 @@ export default function DiceScreen() {
 
         {/* Reward Cost Bar */}
         <View style={styles.costBar}>
-          <Text style={styles.costText}>Cost: 100 Points or 1 Free Roll</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.costText}>Cost: {getRollCost()} Points or 1 Free Roll</Text>
+            <TouchableOpacity onPress={() => setShowInflationInfo(true)}>
+              <Ionicons name="help-circle-outline" size={16} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
           <Text style={styles.bankText}>{economy.freeRolls > 0 ? `${economy.freeRolls} Free Rolls` : `${economy.points} Points`}</Text>
         </View>
 
@@ -891,9 +1456,13 @@ export default function DiceScreen() {
 
         {/* Tap hint — between dice and button for equal spacing */}
         <View style={styles.tapHintRow}>
-          {!rolling && !result && (
+          {bank5IfOver17 > 0 || tokensIfOver17 > 0 ? (
+            <View style={{ backgroundColor: '#ef4444', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 }}>
+              <Text style={{ color: '#fff', fontWeight: '900', fontSize: 13, letterSpacing: 1 }}>JACKPOT ROLL ACTIVE!</Text>
+            </View>
+          ) : (!rolling && !result && (
             <Text style={styles.tapHint}>Tap the dice to roll!</Text>
-          )}
+          ))}
           {rolling && (
             <Text style={styles.tapHint}>Rolling...</Text>
           )}
@@ -906,8 +1475,17 @@ export default function DiceScreen() {
               onPress={rollDice}
               activeOpacity={0.8}
             >
-              <Ionicons name="dice-outline" size={20} color="#fff" />
-              <Text style={styles.rollAgainText}>Roll {multiplier > 1 ? `x${multiplier}` : 'Dice'}</Text>
+              <View style={{ alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="dice-outline" size={18} color="#fff" />
+                  <Text style={[styles.rollAgainText, { color: '#fff' }]}>
+                    {(bank5IfOver17 > 0 || tokensIfOver17 > 0) ? 'Free Jackpot Roll' : (multiplier > 1 ? `Roll x${multiplier}` : 'Roll Dice')}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', fontWeight: '600' }}>
+                  {(bank5IfOver17 > 0 || tokensIfOver17 > 0) ? 'No cost for this roll' : `Use ${getRollCost()} Pts or 1 Free Roll`}
+                </Text>
+              </View>
             </TouchableOpacity>
 
             <TouchableOpacity 
@@ -939,13 +1517,13 @@ export default function DiceScreen() {
               <Text style={styles.resultFaceText}>{result.face}</Text>
             </View>
             <Text style={styles.resultPrize}>{result.prize}</Text>
-            {result.face === 18 && (!result.prize.startsWith('Swapped')) && (
+            {result.face === 18 && !result.isJackpot && (!result.prize.startsWith('Swapped')) && (
               <TouchableOpacity style={[styles.rollAgainBtn, { backgroundColor: '#6366f1' }]} onPress={() => setShowSwapUI({ count: multiplier })}>
                 <Ionicons name="swap-horizontal" size={18} color="#fff" />
                 <Text style={styles.rollAgainText}>Execute Swap</Text>
               </TouchableOpacity>
             )}
-            {result.face === 20 && (
+            {result.face === 20 && !result.isJackpot && (
               <TouchableOpacity style={[styles.rollAgainBtn, { backgroundColor: '#6366f1' }]} onPress={() => setShowAnyPicker({ type: 'all', count: multiplier })}>
                 <Ionicons name="search" size={18} color="#fff" />
                 <Text style={styles.rollAgainText}>Pick Any Prize</Text>
@@ -1109,7 +1687,6 @@ export default function DiceScreen() {
            })}
           </View>
         )}
-
         {/* History */}
         {history.length > 0 && (
           <View style={styles.historySection}>
@@ -1129,7 +1706,60 @@ export default function DiceScreen() {
             ))}
           </View>
         )}
+
       </ScrollView>
+
+      {/* Inflation Info Modal */}
+      <Modal
+        visible={showInflationInfo}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowInflationInfo(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 24, padding: 28, width: '100%', maxWidth: 340, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 10, elevation: 5 }}>
+            <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: '#fef3c7', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 20 }}>
+              <Ionicons name="trending-up" size={32} color="#b45309" />
+            </View>
+            
+            <Text style={{ fontSize: 22, fontWeight: '900', color: colors.textPrimary, textAlign: 'center', marginBottom: 12 }}>Point Inflation</Text>
+            
+            <Text style={{ fontSize: 14, color: colors.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: 24 }}>
+              To maintain a balanced economy, the cost of rewards increases as your point balance grows.
+            </Text>
+
+            <View style={{ backgroundColor: '#f9fafb', borderRadius: 16, padding: 20, marginBottom: 24 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
+                <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: '600' }}>Base Roll Cost</Text>
+                <Text style={{ fontSize: 13, color: colors.textPrimary, fontWeight: '700' }}>100 Pts</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
+                <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: '600' }}>Inflation Threshold</Text>
+                <Text style={{ fontSize: 13, color: colors.textPrimary, fontWeight: '700' }}>1,000 Pts</Text>
+              </View>
+              <View style={{ height: 1, backgroundColor: '#e5e7eb', marginVertical: 4, marginBottom: 12 }} />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#b45309' }}>Your Current Tax</Text>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#b45309' }}>+{getRollCost() - 100} Pts</Text>
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#f0fdf4', padding: 12, borderRadius: 12, marginBottom: 28 }}>
+              <Ionicons name="star" size={20} color="#059669" />
+              <Text style={{ flex: 1, fontSize: 12, color: '#065f46', fontWeight: '600' }}>
+                Free Rolls are unaffected by inflation! They always cost exactly 1 roll.
+              </Text>
+            </View>
+
+            <TouchableOpacity 
+              style={{ backgroundColor: colors.primary, paddingVertical: 14, borderRadius: 14, alignItems: 'center' }}
+              onPress={() => setShowInflationInfo(false)}
+            >
+              <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Prize manager modal */}
       <PrizeManagerModal 
@@ -1155,7 +1785,7 @@ export default function DiceScreen() {
           </View>
           <ScrollView contentContainerStyle={styles.managerBody}>
              <Text style={{ fontSize: 13, color: colors.textMuted, marginBottom: 12 }}>Choose a prize from your global pools to claim immediately.</Text>
-             {(showAnyPicker && showAnyPicker.type === 'small' ? ['small'] : ['master', 'small', 'big']).map(category => (
+             {(showAnyPicker && showAnyPicker.type !== 'all' ? [showAnyPicker.type] : ['master', 'small', 'big']).map(category => (
                <View key={category} style={{ marginBottom: 20 }}>
                  <Text style={{ fontSize: 16, fontWeight: '700', textTransform: 'capitalize', color: colors.primary, marginBottom: 8 }}>{category} Prizes</Text>
                  {(pools[category] || []).map((p, idx) => (
@@ -1595,6 +2225,36 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  // Top Stats Row
+  topStatsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 20,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  statChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  statChipText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   managerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1625,6 +2285,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   managerBody: {
+    flexGrow: 1,
     padding: 20,
     paddingBottom: 100,
     gap: 12,

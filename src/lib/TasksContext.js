@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useProfile } from './ProfileContext';
 import { useSettings } from './SettingsContext';
 import { supabase } from './supabase';
+import { useEconomy } from './EconomyContext';
 
 export const STATUSES = {
   first_step:  { label: '1st Step',    color: '#8b5cf6', icon: 'footsteps-outline', next: 'active' },
@@ -164,6 +165,7 @@ export function calcNextDueDate(task, dayStartTime = 6) {
 
 export function TasksProvider({ children }) {
   const { storagePrefix, user } = useProfile();
+  const { unlockPrizeByTaskId } = useEconomy();
   const [tasks, setTasks] = useState([]);
   const [taskHistory, setTaskHistory] = useState([]);
   const [loaded, setLoaded] = useState(false);
@@ -614,6 +616,10 @@ export function TasksProvider({ children }) {
         statusHistory: updatedHistory,
         streak: newStreak
       };
+
+      if (isCompletion) {
+        unlockPrizeByTaskId(t.id, tasks);
+      }
 
       logTaskEvent(updated, intentStatus);
       return updated;

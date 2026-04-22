@@ -3,6 +3,7 @@ import { useFrame, useLoader } from '@react-three/fiber/native';
 import { useGLTF, useTexture } from '@react-three/drei/native';
 import * as THREE from 'three';
 import { STATUSES, calculateTaskStreak, calculateTaskMissedStreak } from '../lib/TasksContext';
+import { useEconomy } from '../lib/EconomyContext';
 
 const ENERGY = {
   low:    { label: 'Low',    color: '#10b981', bg: '#d1fae5' },
@@ -119,6 +120,7 @@ export default function TaskCard3D({
   onFlip,
   onHistoryPress,
   onConfirmStatus,
+  onPrizePress,
   glbUri,
   logoUri,
 }) {
@@ -128,6 +130,7 @@ export default function TaskCard3D({
 
   const { scene }    = useGLTF(glbUri  ?? require('../../assets/playing_cards.glb'));
   const iconTexture  = useTexture(logoUri ?? require('../../assets/logo.png'));
+  const { economy }  = useEconomy();
 
   // ── Task data ─────────────────────────────────────────────────────────────
   const rawTitle      = (task?.title || 'Untitled').toUpperCase();
@@ -176,6 +179,14 @@ export default function TaskCard3D({
     : missedStreak > 0 ? `💀 MISSED STREAK ${missedStreak}` : null;
   const streakColor = streak > 0 ? streakColorLinear : missedColorLinear;
 
+  const vault = economy.vaultPrizes || [];
+  const lockedPrize = vault.find(p => (p.linkedTaskIds || []).includes(String(task?.id)) && p.status === 'locked');
+  const unlockedPrize = vault.find(p => (p.linkedTaskIds || []).includes(String(task?.id)) && p.status === 'unlocked');
+  
+  const prizeLabel = lockedPrize ? '🔒 PRIZE LOCKED' : (unlockedPrize ? '🎁 PRIZE UNLOCKED!' : null);
+  const prizeColor = lockedPrize ? '#ef4444' : '#059669';
+  const prizeBg    = lockedPrize ? '#fee2e2' : '#d1fae5';
+
   // ── Textures (all unconditional — no conditional hooks) ───────────────────
   const statusMaskTex  = useLoader(THREE.TextureLoader, maskUrl(statusLabel.toUpperCase(), 400, 100));
   const title1MaskTex  = useLoader(THREE.TextureLoader, maskUrl(line1, 800, 200));
@@ -184,18 +195,19 @@ export default function TaskCard3D({
   const dueMaskTex     = useLoader(THREE.TextureLoader, dueDateLabel  ? maskUrl(dueDateLabel, 500, 100)  : DUMMY_URL);
   const energyMaskTex  = useLoader(THREE.TextureLoader, energyLabel   ? maskUrl(energyLabel, 300, 100)   : DUMMY_URL);
   const streakMaskTex  = useLoader(THREE.TextureLoader, streakLabel   ? maskUrl(streakLabel, 300, 100)   : DUMMY_URL);
+  const prizeMaskTex   = useLoader(THREE.TextureLoader, prizeLabel    ? maskUrl(prizeLabel, 400, 100)    : DUMMY_URL);
 
   const tagUrls         = tags.length > 0 ? tags.map(t => maskUrl(t.toUpperCase(), 300, 100)) : [DUMMY_URL];
   const tagMaskTextures = useLoader(THREE.TextureLoader, tagUrls);
 
   useMemo(() => {
     const all = [statusMaskTex, title1MaskTex, title2MaskTex, historyMaskTex,
-                 dueMaskTex, energyMaskTex, streakMaskTex, ...tagMaskTextures];
+                 dueMaskTex, energyMaskTex, streakMaskTex, prizeMaskTex, ...tagMaskTextures];
     all.forEach(t => {
       if (t) { t.premultiplyAlpha = false; t.generateMipmaps = false; t.needsUpdate = true; }
     });
   }, [statusMaskTex, title1MaskTex, title2MaskTex, historyMaskTex,
-      dueMaskTex, energyMaskTex, streakMaskTex, tagMaskTextures]);
+      dueMaskTex, energyMaskTex, streakMaskTex, prizeMaskTex, tagMaskTextures]);
 
   // ── Clone card meshes from shared GLB ────────────────────────────────────
   const { frontCard, backCard } = useMemo(() => {
@@ -244,6 +256,7 @@ export default function TaskCard3D({
   const eW = energyLabel   ? chipW(energyLabel, 0.25)   : 0;
   const stW = streakLabel  ? chipW(streakLabel, 0.25)   : 0;
   const hW = chipW('HISTORY', 0.25);
+  const prW = prizeLabel ? chipW(prizeLabel, 0.25) : 0;
 
   const tagsData = tags.length > 0
     ? tags.map((t, i) => ({ text: t, width: chipW(t), mask: tagMaskTextures[i] }))
@@ -303,6 +316,19 @@ export default function TaskCard3D({
               backgroundColor={streak > 0 ? '#fef3c7' : '#fee2e2'}
               textColor={streak > 0 ? '#b45309' : '#b91c1c'}
               maskTexture={streakMaskTex}
+            />
+          )}
+
+          {/* ROW 3: Prize (Center) */}
+          {prizeLabel && (
+            <Chip
+              position={[0, 0.53, 0.12]}
+              width={prW} height={0.2}
+              borderColor={prizeColor}
+              backgroundColor={prizeBg}
+              textColor={prizeColor}
+              maskTexture={prizeMaskTex}
+              onPress={interactive ? onPrizePress : undefined}
             />
           )}
 

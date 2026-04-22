@@ -1175,7 +1175,7 @@ const styles = StyleSheet.create({
   scrollContent: { paddingBottom: 100 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: Platform.OS === 'ios' ? 12 : 20, paddingBottom: 8 },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerTitle: { fontSize: 24, fontWeight: '700', color: colors.textPrimary },
+  headerTitle: { fontSize: 24, fontWeight: '800', color: colors.textPrimary },
   resetBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: '#f3f4f6' },
   resetBtnText: { fontSize: 13, color: colors.textMuted, fontWeight: '500' },
   card: { width: CARD_W, height: CARD_H, borderRadius: 10, borderWidth: 1, padding: 6, justifyContent: 'space-between', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 3 },

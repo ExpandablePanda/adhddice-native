@@ -107,7 +107,7 @@ function MovingCard({ task, state, progress, fromX, toX, cardScale, glbUri, logo
 
 function DeckScene({
   tasks, activeIdx, animState, progress,
-  onDraw, onReturn, onOpen, onHistory, onConfirmStatus,
+  onDraw, onReturn, onOpen, onHistory, onConfirmStatus, onPrizePress,
   glbUri, logoUri, isDark,
 }) {
   const { viewport } = useThree();
@@ -189,6 +189,7 @@ function DeckScene({
             onFlip={onReturn}
             onHistoryPress={() => onHistory && onHistory(activeTask)}
             onConfirmStatus={onConfirmStatus}
+            onPrizePress={onPrizePress}
             glbUri={glbUri}
             logoUri={logoUri}
           />
@@ -214,7 +215,7 @@ function DeckScene({
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export default function CardViewCanvas({ tasks = [], onOpen, onHistory, onConfirmStatus, style }) {
+export default function CardViewCanvas({ tasks = [], onOpen, onHistory, onConfirmStatus, onPrizePress, style }) {
   const { isDark } = useTheme();
   const [assets]   = useAssets(Platform.OS === 'web' ? [GLB_MODULE, LOGO_MODULE] : []);
   const glbUri     = Platform.OS === 'web' ? assets?.[0]?.uri : GLB_MODULE;
@@ -294,6 +295,7 @@ export default function CardViewCanvas({ tasks = [], onOpen, onHistory, onConfir
             onOpen={onOpen}
             onHistory={onHistory}
             onConfirmStatus={onConfirmStatus}
+            onPrizePress={onPrizePress}
             glbUri={glbUri}
             logoUri={logoUri}
             isDark={isDark}
