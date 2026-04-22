@@ -3,26 +3,24 @@ import { View, PanResponder, useWindowDimensions, Platform } from 'react-native'
 import { Canvas, useFrame, useThree } from '@react-three/fiber/native';
 import { PerspectiveCamera } from '@react-three/drei/native';
 import { useGLTF } from '@react-three/drei/native';
-import { Asset } from 'expo-asset';
+import { useAssets } from 'expo-asset';
 import * as THREE from 'three';
 import TaskCard3D from './TaskCard3D';
-
-const resolveAsset = (mod) => {
-  if (Platform.OS === 'web' && typeof mod === 'number') return Asset.fromModule(mod).uri || mod;
-  return mod;
-};
 
 const CARD_FOV = 60;
 const CAMERA_Z = 5;
 
+const GLB_MODULE  = require('../../assets/playing_cards.glb');
+const LOGO_MODULE = require('../../assets/logo.png');
+
 // ── Inner scene ───────────────────────────────────────────────────────────────
 
-function CardScene({ tasks, rawScrollPx, flippedCards, onOpen, onHistory, onConfirmStatus, onFlipCard }) {
+function CardScene({ tasks, rawScrollPx, flippedCards, onOpen, onHistory, onConfirmStatus, onFlipCard, glbUri, logoUri }) {
   const worldRef = useRef();
   const { viewport } = useThree();
 
   // Measure actual card mesh width at scale=1
-  const { scene: glbScene } = useGLTF(resolveAsset(require('../../assets/playing_cards.glb')));
+  const { scene: glbScene } = useGLTF(glbUri);
   const naturalCardW = useMemo(() => {
     if (!glbScene) return null;
     let mesh = null;
@@ -66,6 +64,8 @@ function CardScene({ tasks, rawScrollPx, flippedCards, onOpen, onHistory, onConf
             onFlip={() => onFlipCard && onFlipCard(task.id)}
             onHistoryPress={() => onHistory && onHistory(task)}
             onConfirmStatus={onConfirmStatus}
+            glbUri={glbUri}
+            logoUri={logoUri}
           />
         </Suspense>
       ))}
@@ -85,6 +85,14 @@ export default function CardViewCanvas({
   style,
 }) {
   const { height } = useWindowDimensions();
+
+  // Preload assets on web so useGLTF gets a real URL, not a numeric module ID
+  const [assets] = useAssets(Platform.OS === 'web' ? [GLB_MODULE, LOGO_MODULE] : []);
+  const glbUri  = Platform.OS === 'web' ? assets?.[0]?.uri : GLB_MODULE;
+  const logoUri = Platform.OS === 'web' ? assets?.[1]?.uri : LOGO_MODULE;
+
+  // Don't render until assets are resolved on web
+  if (Platform.OS === 'web' && !glbUri) return null;
 
   const rawScrollPx  = useRef(0);
   const lastScrollPx = useRef(0);
@@ -125,6 +133,8 @@ export default function CardViewCanvas({
           onHistory={onHistory}
           onConfirmStatus={onConfirmStatus}
           onFlipCard={onFlipCard}
+          glbUri={glbUri}
+          logoUri={logoUri}
         />
       </Canvas>
     </View>
