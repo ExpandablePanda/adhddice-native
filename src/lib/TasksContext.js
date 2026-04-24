@@ -295,13 +295,6 @@ export function TasksProvider({ children }) {
               needsImmediateSyncRef.current = true;
             }
           }
-                setBreakTimer(null);
-              }
-              if (cloud.gamesUnlockEndTime) {
-                setGamesUnlockEndTime(cloud.gamesUnlockEndTime);
-              }
-            }
-          }
         } catch (e) {
           console.log('Tasks initial cloud sync skipped or failed', e);
         }
