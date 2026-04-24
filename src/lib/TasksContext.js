@@ -247,10 +247,13 @@ export function TasksProvider({ children }) {
         console.error('Failed to load local tasks', e);
       }
       
+      const localUpdated = await AsyncStorage.getItem(`${storagePrefix}tasks_last_updated`);
+      const localTs = localUpdated ? parseInt(localUpdated) : 0;
+
       setTasks(initialTasks);
       setTaskHistory(initialHistory);
 
-      // B. Cloud sync (Cloud is the source of truth on startup)
+      // B. Cloud sync (Cloud is the source of truth on startup, but local wins if it's newer)
       if (user) {
         try {
           const { data, error } = await supabase
@@ -260,24 +263,38 @@ export function TasksProvider({ children }) {
             .single();
 
           if (data?.data) {
-            isRemoteUpdateRef.current = true;
-            const cloud = data.data;
-            if (Array.isArray(cloud)) {
-              setTasks(cloud.filter(Boolean));
-            } else if (cloud.tasks) {
-              setTasks(cloud.tasks.filter(Boolean));
-              if (cloud.history) setTaskHistory(cloud.history.filter(Boolean));
-              
-              // Handle break timer from cloud
-              if (cloud.breakTimer && cloud.breakTimer.endTime) {
-                const remaining = Math.max(0, Math.floor((cloud.breakTimer.endTime - Date.now()) / 1000));
-                if (remaining > 0) {
-                  setBreakTimer({ ...cloud.breakTimer, remainingSeconds: remaining });
-                } else {
+            const cloudTs = new Date(data.updated_at).getTime();
+            
+            // Only overwrite if cloud is strictly newer than local
+            if (cloudTs > localTs) {
+              isRemoteUpdateRef.current = true;
+              const cloud = data.data;
+              if (Array.isArray(cloud)) {
+                setTasks(cloud.filter(Boolean));
+              } else if (cloud.tasks) {
+                setTasks(cloud.tasks.filter(Boolean));
+                if (cloud.history) setTaskHistory(cloud.history.filter(Boolean));
+                
+                if (cloud.breakTimer && cloud.breakTimer.endTime) {
+                  const remaining = Math.max(0, Math.floor((cloud.breakTimer.endTime - Date.now()) / 1000));
+                  if (remaining > 0) {
+                    setBreakTimer({ ...cloud.breakTimer, remainingSeconds: remaining });
+                  } else {
+                    setBreakTimer(null);
+                  }
+                } else if (cloud.breakTimer === null) {
                   setBreakTimer(null);
                 }
-              } else if (cloud.breakTimer === null) {
-                // cloud explicitly says it's empty
+
+                if (cloud.gamesUnlockEndTime !== undefined) {
+                  setGamesUnlockEndTime(cloud.gamesUnlockEndTime);
+                }
+              }
+            } else if (localTs > cloudTs + 2000) {
+              // Local is newer (and by more than 2s to avoid jitter), push local to cloud
+              needsImmediateSyncRef.current = true;
+            }
+          }
                 setBreakTimer(null);
               }
               if (cloud.gamesUnlockEndTime) {
@@ -367,9 +384,11 @@ export function TasksProvider({ children }) {
     }
 
     // Always save locally
+    const now = Date.now();
     await AsyncStorage.setItem(`${storagePrefix}tasks`, JSON.stringify(t));
     await AsyncStorage.setItem(`${storagePrefix}task_history`, JSON.stringify(th));
     await AsyncStorage.setItem(`${storagePrefix}games_unlock_end_time`, String(guet));
+    await AsyncStorage.setItem(`${storagePrefix}tasks_last_updated`, String(now));
     if (timerToSave) {
       await AsyncStorage.setItem(`${storagePrefix}break_timer`, JSON.stringify(timerToSave));
     } else {
@@ -403,7 +422,7 @@ export function TasksProvider({ children }) {
     if (immediate) {
       saveTasksData();
     } else {
-      syncTimeoutRef.current = setTimeout(saveTasksData, 1500);
+      syncTimeoutRef.current = setTimeout(saveTasksData, 500); // Faster sync (500ms)
     }
   }, [saveTasksData]);
 
@@ -421,14 +440,26 @@ export function TasksProvider({ children }) {
       needsImmediateSyncRef.current = false;
       triggerTasksSync(true);
     } else {
-      triggerTasksSync(false); // Debounce by default (1.5s)
+      triggerTasksSync(false); // Debounce by default
     }
 
     const handleUnload = () => saveTasksData();
-    if (Platform.OS === 'web') window.addEventListener('pagehide', handleUnload);
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        saveTasksData();
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      window.addEventListener('pagehide', handleUnload);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
 
     return () => {
-      if (Platform.OS === 'web') window.removeEventListener('pagehide', handleUnload);
+      if (Platform.OS === 'web') {
+        window.removeEventListener('pagehide', handleUnload);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
     };
   }, [tasks, taskHistory, breakTimer, gamesUnlockEndTime, loaded, user, storagePrefix, triggerTasksSync, saveTasksData]);
 

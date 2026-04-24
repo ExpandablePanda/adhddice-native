@@ -9,6 +9,7 @@ import { useAudioPlayer } from 'expo-audio';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import { useIsFocused } from '@react-navigation/native';
 import { colors } from '../theme';
 import { useEconomy } from '../lib/EconomyContext';
 import { useTheme } from '../lib/ThemeContext';
@@ -731,6 +732,7 @@ function VaultModal({ visible, onClose }) {
 export default function DiceScreen({ navigation, route }) {
   const { economy, spendPoints, addFreeRoll, addTokens, getRollCost, getReshuffleCost, getPrizeEditCost } = useEconomy();
   const { user, storagePrefix } = useProfile();
+  const isFocused = useIsFocused();
 
   const [pools, setPools]           = useState(DEFAULT_POOLS);
   const [dailyBoard, setDailyBoard] = useState(null); // the generated faceMap
@@ -1442,14 +1444,17 @@ export default function DiceScreen({ navigation, route }) {
               disabled={rolling}
               style={{ alignItems: 'center', justifyContent: 'center' }}
             >
-              <Dice3D 
-                size={Platform.OS === 'web' ? Math.min(SCREEN_W * 0.8, 320) : SCREEN_W * 0.8} 
-                rolling={rolling} 
-                result={result} 
-                color={colors.primary} 
-                glowColor={colors.primary} 
-              />
-              
+              {isFocused ? (
+                <Dice3D 
+                  size={Platform.OS === 'web' ? Math.min(SCREEN_W * 0.8, 320) : SCREEN_W * 0.8} 
+                  rolling={rolling} 
+                  result={result} 
+                  color={colors.primary} 
+                  glowColor={colors.primary} 
+                />
+              ) : (
+                <View style={{ width: 320, height: 320 }} />
+              )}
             </TouchableOpacity>
           </Animated.View>
         </View>

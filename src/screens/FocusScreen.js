@@ -1422,6 +1422,7 @@ export default function FocusScreen() {
     const total = totalEffProductive + totalEffWaste;
     return {
       total,
+      paidProductiveTotal: sorted.paid + sorted.productive,
       paid: sorted.paid,
       productive: sorted.productive,
       unproductive: sorted.unproductive,
@@ -1597,7 +1598,7 @@ export default function FocusScreen() {
                   <View style={styles.todayTop}>
                     <View>
                       <Text style={styles.todayLabel}>{isToday ? 'Today' : fmtDate(date)}</Text>
-                      <Text style={styles.todayTotal}>{fmtDuration(stats.total)}</Text>
+                      <Text style={styles.todayTotal}>{fmtDuration(stats.paidProductiveTotal)}</Text>
                     </View>
                     <View style={styles.todaySummaryRow}>
                       <View style={styles.scoreCircleSmall}>

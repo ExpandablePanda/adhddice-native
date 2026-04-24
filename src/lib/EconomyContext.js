@@ -68,6 +68,10 @@ export function EconomyProvider({ children }) {
         console.error('Failed to load local economy', e);
       }
 
+      const localUpdated = await AsyncStorage.getItem(`${storagePrefix}economy_last_updated`);
+      const localTs = localUpdated ? parseInt(localUpdated) : 0;
+      const localEconomy = economy; // Capture what we have so far
+
       if (user) {
         try {
           const { data } = await supabase
@@ -77,8 +81,16 @@ export function EconomyProvider({ children }) {
             .single();
 
           if (data?.data) {
-            isRemoteUpdateRef.current = true;
-            setEconomy(data.data);
+            const cloudTs = new Date(data.updated_at).getTime();
+            
+            // Only overwrite if cloud is strictly newer than local
+            if (cloudTs > localTs) {
+              isRemoteUpdateRef.current = true;
+              setEconomy(data.data);
+            } else if (localTs > cloudTs + 2000) {
+              // Local is newer, trigger a sync to cloud soon
+              lastLocalChangeRef.current = Date.now();
+            }
           }
         } catch (e) {
           console.log('Economy sync skipped', e);
@@ -125,7 +137,9 @@ export function EconomyProvider({ children }) {
 
     const saveData = async () => {
       const dataToSave = economy;
+      const now = Date.now();
       await AsyncStorage.setItem(`${storagePrefix}economy`, JSON.stringify(dataToSave));
+      await AsyncStorage.setItem(`${storagePrefix}economy_last_updated`, String(now));
 
       try {
         const { error } = await supabase
@@ -137,14 +151,25 @@ export function EconomyProvider({ children }) {
       }
     };
 
-    const timeoutId = setTimeout(saveData, 1500);
-    // pagehide is BFCache-compatible (beforeunload disables BFCache in Safari)
+    const timeoutId = setTimeout(saveData, 500); // Faster sync (500ms)
     const handleUnload = () => saveData();
-    if (Platform.OS === 'web') window.addEventListener('pagehide', handleUnload);
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        saveData();
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      window.addEventListener('pagehide', handleUnload);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
 
     return () => {
       clearTimeout(timeoutId);
-      if (Platform.OS === 'web') window.removeEventListener('pagehide', handleUnload);
+      if (Platform.OS === 'web') {
+        window.removeEventListener('pagehide', handleUnload);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
     };
   }, [economy, loaded, user, storagePrefix]);
 

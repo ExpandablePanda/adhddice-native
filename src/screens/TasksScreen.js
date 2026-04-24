@@ -5,7 +5,7 @@ import {
   StyleSheet, Modal, KeyboardAvoidingView, Platform, Image,
   ScrollView, Alert, Animated, RefreshControl, AppState, Linking
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useIsFocused } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAudioPlayer } from 'expo-audio';
 import { Ionicons } from '@expo/vector-icons';
@@ -186,7 +186,7 @@ function getStepPresets(title = '') {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-function groupByStatus(tasks, overstimulated = false) {
+function groupByStatus(tasks, overstimulated = false, isFiltering = false) {
   const todayKey = getLocalDateKey();
   const activeStatuses = ['first_step', 'active', 'pending', 'missed', 'upcoming'];
   
@@ -199,7 +199,10 @@ function groupByStatus(tasks, overstimulated = false) {
         // Recurring tasks should not be hidden from active sections just because they were done today
         // (because they move to 'upcoming' and we want to see them there)
         const shouldHide = isDoneToday && !t.frequency;
-        return t.status === s && !t.isPriority && !t.isUrgent && !shouldHide;
+        
+        // If filtering, we don't want to exclude priority/urgent from their status buckets
+        const excludeSpecial = !isFiltering && (t.isPriority || t.isUrgent);
+        return t.status === s && !excludeSpecial && !shouldHide;
       });
       return { 
         title: STATUSES[s].label, 
@@ -233,38 +236,40 @@ function groupByStatus(tasks, overstimulated = false) {
     }
   }
 
-  const priorityData = tasks.filter(t => {
-    const h = t.statusHistory?.[todayKey];
-    const isDoneToday = h === 'done' || h === 'did_my_best';
-    const isDone = t.status === 'done' || t.status === 'did_my_best' || isDoneToday;
-    if (isDone) return false;
-    if (overstimulated && t.status === 'upcoming') return false;
-    return t.isPriority && !t.isUrgent;
-  });
-  if (priorityData.length > 0) {
-    sections.unshift({
-      title: '🔥 Priority Focus',
-      status: 'first_step',
-      data: priorityData,
-      fullCount: priorityData.length
+  if (!isFiltering) {
+    const priorityData = tasks.filter(t => {
+      const h = t.statusHistory?.[todayKey];
+      const isDoneToday = h === 'done' || h === 'did_my_best';
+      const isDone = t.status === 'done' || t.status === 'did_my_best' || isDoneToday;
+      if (isDone) return false;
+      if (overstimulated && t.status === 'upcoming') return false;
+      return t.isPriority && !t.isUrgent;
     });
-  }
+    if (priorityData.length > 0) {
+      sections.unshift({
+        title: '🔥 Priority Focus',
+        status: 'first_step',
+        data: priorityData,
+        fullCount: priorityData.length
+      });
+    }
 
-  const urgentData = tasks.filter(t => {
-    const h = t.statusHistory?.[todayKey];
-    const isDoneToday = h === 'done' || h === 'did_my_best';
-    const isDone = t.status === 'done' || t.status === 'did_my_best' || isDoneToday;
-    if (isDone) return false;
-    if (overstimulated && t.status === 'upcoming') return false;
-    return t.isUrgent;
-  });
-  if (urgentData.length > 0) {
-    sections.unshift({
-      title: '⏰ Urgent Tasks',
-      status: 'upcoming', 
-      data: urgentData,
-      fullCount: urgentData.length
+    const urgentData = tasks.filter(t => {
+      const h = t.statusHistory?.[todayKey];
+      const isDoneToday = h === 'done' || h === 'did_my_best';
+      const isDone = t.status === 'done' || t.status === 'did_my_best' || isDoneToday;
+      if (isDone) return false;
+      if (overstimulated && t.status === 'upcoming') return false;
+      return t.isUrgent;
     });
+    if (urgentData.length > 0) {
+      sections.unshift({
+        title: '⏰ Urgent Tasks',
+        status: 'upcoming', 
+        data: urgentData,
+        fullCount: urgentData.length
+      });
+    }
   }
 
   return sections;
@@ -740,7 +745,7 @@ function TaskRow({
     <View style={[
       styles.rowContainer, 
       task.isPriority && task.status !== 'done' && { borderLeftWidth: 4, borderLeftColor: '#8b5cf6', backgroundColor: '#f5f3ff' },
-      task.isUrgent && task.status !== 'done' && { borderLeftWidth: 4, borderLeftColor: '#ef4444', backgroundColor: '#fff1f2' }
+      task.isUrgent && task.status !== 'done' && { borderLeftWidth: 4, borderLeftColor: '#ef4444' }
     ]}>
       <TouchableOpacity
         style={styles.row}
@@ -3328,6 +3333,7 @@ function FocusYourDay({ tasks, onComplete, onStartOneStep, selectionMode, forceO
 }
 
 export default function TasksScreen() {
+  const isFocused = useIsFocused();
   const { colors } = useTheme();
   const { dayStartTime } = useSettings();
   const { 
@@ -3745,7 +3751,9 @@ export default function TasksScreen() {
     setShuffleTask(next);
   };
   
-  const sections = groupByStatus(filtered, overstimulated);
+  const isFiltering = !!search || filterTags.length > 0 || filterStatus.length > 0 || filterEnergy.length > 0 || filterMissedStreak || filterStreak;
+
+  const sections = groupByStatus(filtered, overstimulated, isFiltering);
 
   function confirmStatus(taskId, targetStatus, subtaskId = null) {
     const task = tasks.find(t => t.id === taskId);
@@ -4049,7 +4057,7 @@ export default function TasksScreen() {
         </TouchableOpacity>
       </View>
 
-      {!overstimulated && (
+      {!overstimulated && !isFiltering && (
         <View style={{ paddingHorizontal: 20, marginBottom: 16 }}>
           <FocusYourDay 
             tasks={tasks} 
@@ -4512,7 +4520,7 @@ export default function TasksScreen() {
       )}
 
       {/* ── Card view ── */}
-      {view === 'cards' && !overstimulated && (
+      {view === 'cards' && !overstimulated && isFocused && (
         filtered.length === 0
           ? <Text style={styles.empty}>No tasks — tap New or import.</Text>
           : <CardViewCanvas

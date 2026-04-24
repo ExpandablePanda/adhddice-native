@@ -244,6 +244,33 @@ export default function TaskCard3D({
   // Keep front card color in sync with status (handles status changes without re-cloning)
   if (frontCard) frontCard.material.color.set(statusColor);
 
+  // Dispose resources on unmount
+  React.useEffect(() => {
+    return () => {
+      [frontCard, backCard].forEach(card => {
+        if (card) {
+          card.traverse(child => {
+            if (child.isMesh) {
+              if (child.geometry) child.geometry.dispose();
+              if (child.material) {
+                if (Array.isArray(child.material)) {
+                  child.material.forEach(m => m.dispose());
+                } else {
+                  child.material.dispose();
+                }
+              }
+            }
+          });
+        }
+      });
+      // Dispose textures
+      [statusMaskTex, title1MaskTex, title2MaskTex, historyMaskTex, dueMaskTex, 
+       energyMaskTex, streakMaskTex, prizeMaskTex, linkMaskTex, ...tagMaskTextures].forEach(t => {
+        if (t && t.dispose) t.dispose();
+      });
+    };
+  }, [frontCard, backCard]);
+
   // ── Flip animation ────────────────────────────────────────────────────────
   useFrame((_, delta) => {
     if (!groupRef.current || skipInternalAnimation) return;

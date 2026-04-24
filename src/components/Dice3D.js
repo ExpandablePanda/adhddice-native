@@ -117,6 +117,26 @@ function D20Model({ rolling, result, color, manualRotation }) {
   const targetQuaternion = useRef(new THREE.Quaternion());
   const currentQuaternion = useRef(new THREE.Quaternion());
 
+  // Dispose resources on unmount
+  useEffect(() => {
+    return () => {
+      if (clonedScene) {
+        clonedScene.traverse((child) => {
+          if (child.isMesh) {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) {
+              if (Array.isArray(child.material)) {
+                child.material.forEach(m => m.dispose());
+              } else {
+                child.material.dispose();
+              }
+            }
+          }
+        });
+      }
+    };
+  }, [clonedScene]);
+
   useFrame((state, delta) => {
     if (!meshRef.current) return;
     
