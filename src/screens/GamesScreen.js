@@ -4,6 +4,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Alert, Animated, Easing, Dimensions, Modal, Image, Platform
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -1116,28 +1117,131 @@ function DopamineMatch({ onBack, colors, tasks }) {
   );
 }
 
+function LockedGamesView({ tasks, colors }) {
+  const navigation = useNavigation();
+  const lowEffortTasks = tasks
+    .filter(t => t.energy === 'low' && t.status !== 'done' && t.status !== 'did_my_best')
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 3);
+
+  return (
+    <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]} edges={['left', 'right']}>
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <Ionicons name="game-controller-outline" size={24} color={colors.primary}/>
+          <Text style={styles.headerTitle}>Games Hub</Text>
+        </View>
+      </View>
+      
+      <ScrollView contentContainerStyle={[styles.scrollContent, { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 30 }]}>
+        <View style={{ width: 100, height: 100, borderRadius: 50, backgroundColor: colors.primary + '15', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+          <Ionicons name="lock-closed" size={48} color={colors.primary} />
+        </View>
+        
+        <Text style={{ fontSize: 24, fontWeight: '900', color: colors.textPrimary, textAlign: 'center', marginBottom: 12 }}>
+          Games are Locked
+        </Text>
+        
+        <Text style={{ fontSize: 16, color: colors.textSecondary, textAlign: 'center', lineHeight: 24, marginBottom: 30 }}>
+          Earn your playtime! Complete any <Text style={{ color: colors.primary, fontWeight: '800' }}>Low Effort</Text> task to unlock all games for 1 hour.
+        </Text>
+
+        <View style={{ width: '100%', gap: 12, marginBottom: 40 }}>
+          <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1, textAlign: 'center', marginBottom: 4 }}>
+            Suggested Tasks
+          </Text>
+          {lowEffortTasks.length > 0 ? (
+            lowEffortTasks.map(t => (
+              <TouchableOpacity 
+                key={t.id} 
+                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#f3f4f6', gap: 12 }}
+                onPress={() => navigation.navigate('Tasks')}
+              >
+                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#d1fae5', alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="flash" size={16} color="#10b981" />
+                </View>
+                <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: colors.textPrimary }} numberOfLines={1}>
+                  {t.title}
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color="#ccc" />
+              </TouchableOpacity>
+            ))
+          ) : (
+            <View style={{ padding: 20, alignItems: 'center', backgroundColor: '#f9fafb', borderRadius: 16, borderStyle: 'dashed', borderWidth: 1, borderColor: '#e5e7eb' }}>
+              <Text style={{ fontSize: 14, color: colors.textMuted, fontStyle: 'italic' }}>No low effort tasks available.</Text>
+            </View>
+          )}
+        </View>
+
+        <TouchableOpacity 
+          style={{ backgroundColor: colors.primary, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 16, shadowColor: colors.primary, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6 }}
+          onPress={() => navigation.navigate('Tasks')}
+        >
+          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '800' }}>Go to Tasks</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // MAIN EXPORT
 // ═════════════════════════════════════════════════════════════════════════════
 
 export default function GamesScreen() {
   const { colors } = useTheme();
-  const { tasks } = useTasks();
+  const { tasks, gamesUnlockEndTime } = useTasks();
   const [currentGame, setCurrentGame] = useState('hub');
   const scrollRef = useRef(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [timeLeft, setTimeLeft] = useState('');
 
   const handleScroll = (event) => setShowScrollTop(event.nativeEvent.contentOffset.y > 300);
+
+  // Unlock logic
+  const isUnlocked = gamesUnlockEndTime > Date.now();
+
+  useEffect(() => {
+    if (!isUnlocked) return;
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const remaining = gamesUnlockEndTime - now;
+      if (remaining <= 0) {
+        setTimeLeft('');
+        clearInterval(interval);
+      } else {
+        const m = Math.floor(remaining / 60000);
+        const s = Math.floor((remaining % 60000) / 1000);
+        setTimeLeft(`${m}:${String(s).padStart(2, '0')}`);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isUnlocked, gamesUnlockEndTime]);
 
   if (currentGame === 'war') return <WarGame onBack={() => setCurrentGame('hub')} tasks={tasks} colors={colors} />;
   if (currentGame === 'breather') return <FocusBreather onBack={() => setCurrentGame('hub')} colors={colors} />;
   if (currentGame === 'match') return <DopamineMatch onBack={() => setCurrentGame('hub')} colors={colors} tasks={tasks} />;
   if (currentGame === 'ramp') return <EnergyRamp onBack={() => setCurrentGame('hub')} colors={colors} tasks={tasks} />;
 
+  if (!isUnlocked) {
+    return <LockedGamesView tasks={tasks} colors={colors} />;
+  }
+
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]} edges={['left', 'right']}>
       <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent} onScroll={handleScroll} scrollEventThrottle={16}>
-        <View style={styles.header}><View style={styles.headerLeft}><Ionicons name="game-controller-outline" size={24} color={colors.primary}/><Text style={styles.headerTitle}>Games Hub</Text></View></View>
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <Ionicons name="game-controller-outline" size={24} color={colors.primary}/>
+            <Text style={styles.headerTitle}>Games Hub</Text>
+          </View>
+          {isUnlocked && timeLeft && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '15', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, gap: 6 }}>
+              <Ionicons name="time-outline" size={14} color={colors.primary} />
+              <Text style={{ fontSize: 13, fontWeight: '800', color: colors.primary, fontVariant: ['tabular-nums'] }}>{timeLeft}</Text>
+            </View>
+          )}
+        </View>
         <View style={hubStyles.hubGrid}>
           <TouchableOpacity style={hubStyles.hubCard} onPress={() => setCurrentGame('war')}>
             <View style={[hubStyles.hubIcon, { backgroundColor: '#ede9fe' }]}><Ionicons name="flash" size={24} color="#6366f1"/></View>

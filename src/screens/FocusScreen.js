@@ -1215,7 +1215,7 @@ export default function FocusScreen() {
     goals, setGoals,
     timerState, setTimerState,
     activeTimerKeys,
-    addVisibleTimer, removeVisibleTimer, reorderTimer,
+    addVisibleTimer, removeVisibleTimer, reorderTimer, bumpTimer,
     adjustTimer,
     startTimer, stopTimer, resetTimer
   } = useFocus();
@@ -1488,6 +1488,10 @@ export default function FocusScreen() {
                   </TouchableOpacity>
 
                   <View style={styles.clockControls}>
+                    <TouchableOpacity style={styles.smallControlBtn} onPress={() => bumpTimer(key)}>
+                      <Ionicons name="arrow-back" size={14} color="#9ca3af" />
+                    </TouchableOpacity>
+
                     <TouchableOpacity style={styles.smallControlBtn} onPress={() => resetTimer(key)}>
                       <Ionicons name="refresh" size={14} color="#9ca3af" />
                     </TouchableOpacity>

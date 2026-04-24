@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, SectionList, FlatList, TouchableOpacity, TextInput,
   StyleSheet, Modal, KeyboardAvoidingView, Platform, Image,
-  ScrollView, Alert, Animated, RefreshControl, AppState
+  ScrollView, Alert, Animated, RefreshControl, AppState, Linking
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,14 +42,15 @@ const ENERGY = {
 };
 
 const VIEWS = [
-  { key: 'list',  icon: 'list-outline'   },
-  { key: 'cards', icon: 'albums-outline' },
+  { key: 'list',   icon: 'list-outline'   },
+  { key: 'matrix', icon: 'grid-outline'   },
+  { key: 'cards',  icon: 'albums-outline' },
 ];
 
 // ── ID helpers ────────────────────────────────────────────────────────────────
 const generateId = () => Date.now().toString() + Math.random().toString(36).substr(2, 9);
 const newSubtask  = title => ({ id: generateId(), title, status: 'pending', subtasks: [] });
-const BLANK       = () => ({ id: null, title: '', status: 'pending', energy: null, dueDate: '', tags: [], subtasks: [], streak: 0, isPriority: false, isUrgent: false, statusHistory: {}, frequencyDays: null, estimatedMinutes: null, weeklyDay: null, weeklyMode: null });
+const BLANK       = () => ({ id: null, title: '', status: 'pending', energy: null, dueDate: '', tags: [], subtasks: [], streak: 0, isPriority: false, isUrgent: false, statusHistory: {}, frequencyDays: null, estimatedMinutes: null, weeklyDay: null, weeklyMode: null, link: '', linkTitle: '' });
 function toggleById(subtasks, id, targetStatus) {
   return mapSubtasks(subtasks, s => {
     if (s.id !== id) return s;
@@ -864,6 +865,22 @@ function TaskRow({
                   </TouchableOpacity>
                 </TouchableOpacity>
               )}
+              {task.link && (
+                <TouchableOpacity
+                  style={[styles.metaChip, { backgroundColor: '#f5f3ff', borderColor: '#8b5cf6', borderWidth: 1 }]}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    try {
+                      let url = task.link;
+                      if (!url.startsWith('http')) url = 'https://' + url;
+                      Linking.openURL(url);
+                    } catch (err) {}
+                  }}
+                >
+                  <Ionicons name="link-outline" size={10} color="#8b5cf6" />
+                  <Text style={[styles.metaChipText, { color: '#8b5cf6', fontWeight: '700' }]}>{task.linkTitle || 'Link'}</Text>
+                </TouchableOpacity>
+              )}
               {(task.tags || []).map((tag, i) => <View key={i} style={[styles.metaChip, { backgroundColor: '#ede9fe' }]}><Text style={[styles.metaChipText, { color: '#6366f1' }]}>{tag}</Text></View>)}
             </View>
           )}
@@ -1322,7 +1339,7 @@ function SubtaskItem({ subtask, depth, onToggle, onDelete, onReorder, onAddChild
 // TASK DETAIL MODAL
 // ═════════════════════════════════════════════════════════════════════════════
 
-function TaskDetailModal({ task, onSave, onDelete, onClose, onViewNote }) {
+function TaskDetailModal({ task, onSave, onDelete, onClose, onViewNote, onStartFocus }) {
   const { top } = useSafeAreaInsets();
   const { tasks: allTasks } = useTasks();
   const existingTags = Array.from(new Set(allTasks.flatMap(t => t.tags || []))).filter(Boolean).sort((a, b) => a.localeCompare(b));
@@ -1453,10 +1470,20 @@ function TaskDetailModal({ task, onSave, onDelete, onClose, onViewNote }) {
             <Ionicons name="close" size={22} color="#6b7280" />
           </TouchableOpacity>
           <Text style={styles.detailHeaderTitle}>{isNew ? 'New Task' : 'Edit Task'}</Text>
-          {!isNew
-            ? <TouchableOpacity onPress={confirmDelete} style={styles.iconBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}><Ionicons name="trash-outline" size={20} color="#ef4444" /></TouchableOpacity>
-            : <View style={{ width: 36 }} />
-          }
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {!isNew && onStartFocus && (
+              <TouchableOpacity 
+                onPress={() => onStartFocus(task)} 
+                style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#f5f3ff', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Ionicons name="flash-outline" size={20} color="#8b5cf6" />
+              </TouchableOpacity>
+            )}
+            {!isNew
+              ? <TouchableOpacity onPress={confirmDelete} style={styles.iconBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}><Ionicons name="trash-outline" size={20} color="#ef4444" /></TouchableOpacity>
+              : <View style={{ width: 36 }} />
+            }
+          </View>
         </View>
         <ScrollView
           contentContainerStyle={styles.detailBody}
@@ -1503,17 +1530,42 @@ function TaskDetailModal({ task, onSave, onDelete, onClose, onViewNote }) {
             ))}
           </View>
           
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Ionicons name="alert-circle" size={20} color={draft.isUrgent ? '#ef4444' : '#9ca3af'} />
-              <Text style={{ fontSize: 15, fontWeight: '600', color: '#374151' }}>Urgent Task</Text>
+          <View style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f3f4f6', gap: 16 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: draft.isUrgent ? '#fee2e2' : '#f3f4f6', alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="alert-circle" size={20} color={draft.isUrgent ? '#ef4444' : '#9ca3af'} />
+                </View>
+                <View>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: '#374151' }}>Urgent</Text>
+                  <Text style={{ fontSize: 11, color: '#6b7280', fontWeight: '500' }}>Needs attention now</Text>
+                </View>
+              </View>
+              <TouchableOpacity 
+                style={[styles.optChip, { minWidth: 80 }, draft.isUrgent && { backgroundColor: '#ef4444', borderColor: '#ef4444' }]}
+                onPress={() => field('isUrgent', !draft.isUrgent)}
+              >
+                <Text style={[styles.optChipText, draft.isUrgent && { color: '#fff' }]}>{draft.isUrgent ? 'URGENT' : 'No'}</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity 
-              style={[styles.optChip, draft.isUrgent && { backgroundColor: '#ef4444', borderColor: '#ef4444' }]}
-              onPress={() => field('isUrgent', !draft.isUrgent)}
-            >
-              <Text style={[styles.optChipText, draft.isUrgent && { color: '#fff' }]}>{draft.isUrgent ? 'URGENT' : 'No'}</Text>
-            </TouchableOpacity>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: draft.isPriority ? '#f5f3ff' : '#f3f4f6', alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="star" size={18} color={draft.isPriority ? '#8b5cf6' : '#9ca3af'} />
+                </View>
+                <View>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: '#374151' }}>Important</Text>
+                  <Text style={{ fontSize: 11, color: '#6b7280', fontWeight: '500' }}>High value goal</Text>
+                </View>
+              </View>
+              <TouchableOpacity 
+                style={[styles.optChip, { minWidth: 80 }, draft.isPriority && { backgroundColor: '#8b5cf6', borderColor: '#8b5cf6' }]}
+                onPress={() => field('isPriority', !draft.isPriority)}
+              >
+                <Text style={[styles.optChipText, draft.isPriority && { color: '#fff' }]}>{draft.isPriority ? 'YES' : 'No'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Frequency */}
@@ -1724,6 +1776,47 @@ function TaskDetailModal({ task, onSave, onDelete, onClose, onViewNote }) {
                 ))}
               </View>
             )}
+          </View>
+
+          {/* Link */}
+          <Text style={styles.fieldLabel}>External Link</Text>
+          <View style={{ gap: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <TextInput
+                  style={styles.fieldInput}
+                  placeholder="Label (e.g. Doc, Site, Music)"
+                  placeholderTextColor="#9ca3af"
+                  value={draft.linkTitle || ''}
+                  onChangeText={v => field('linkTitle', v)}
+                />
+              </View>
+              {draft.link ? (
+                <TouchableOpacity 
+                  style={{ width: 44, height: 44, borderRadius: 10, backgroundColor: '#f5f3ff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#ddd6fe' }}
+                  onPress={() => {
+                    try {
+                      let url = draft.link;
+                      if (!url.startsWith('http')) url = 'https://' + url;
+                      Linking.openURL(url);
+                    } catch (e) {
+                      Alert.alert('Error', 'Could not open link. Please check the URL.');
+                    }
+                  }}
+                >
+                  <Ionicons name="open-outline" size={20} color="#6366f1" />
+                </TouchableOpacity>
+              ) : <View style={{ width: 44 }} />}
+            </View>
+            <TextInput
+              style={styles.fieldInput}
+              placeholder="URL (e.g. https://google.com)"
+              placeholderTextColor="#9ca3af"
+              value={draft.link || ''}
+              onChangeText={v => field('link', v)}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
           </View>
 
           {/* Linked Notes */}
@@ -2683,11 +2776,262 @@ function MorningStartModal({ onClaimReward, onStartPlanning, onClose }) {
   );
 }
 
+function MatrixQuadrant({ title, subtitle, color, tasks, onOpen, onConfirmStatus }) {
+  return (
+    <View style={{ flex: 1, minHeight: 250, padding: 8, backgroundColor: color + '05', borderRadius: 16, borderWidth: 1, borderColor: color + '15' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 13, fontWeight: '800', color: color }}>{title}</Text>
+          <Text style={{ fontSize: 9, color: '#9ca3af', fontWeight: '700', textTransform: 'uppercase' }}>{subtitle}</Text>
+        </View>
+        <View style={{ backgroundColor: color + '20', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 }}>
+          <Text style={{ fontSize: 10, fontWeight: '800', color: color }}>{tasks.length}</Text>
+        </View>
+      </View>
+      
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+        {tasks.map(t => (
+          <TouchableOpacity 
+            key={t.id} 
+            style={{ 
+              backgroundColor: '#fff', borderRadius: 10, padding: 10, marginBottom: 6, 
+              borderWidth: 1, borderColor: '#f3f4f6', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 
+            }}
+            onPress={() => onOpen(t)}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <TouchableOpacity 
+                onPress={() => {
+                  const current = t.status || 'pending';
+                  const next = STATUSES[current].next;
+                  onConfirmStatus(t.id, next);
+                }}
+                style={{ padding: 4 }}
+              >
+                <View style={[styles.dot, { backgroundColor: STATUSES[t.status || 'pending']?.color || '#cbd5e1' }]} />
+              </TouchableOpacity>
+              <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: '#374151' }} numberOfLines={2}>{t.title}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+              {t.energy && (
+                <View style={{ backgroundColor: ENERGY[t.energy].bg, paddingHorizontal: 4, borderRadius: 4 }}>
+                  <Text style={{ fontSize: 8, fontWeight: '800', color: ENERGY[t.energy].color }}>{ENERGY[t.energy].label}</Text>
+                </View>
+              )}
+              {t.dueDate && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                  <Ionicons name="calendar-outline" size={10} color="#9ca3af" />
+                  <Text style={{ fontSize: 9, color: '#9ca3af', fontWeight: '600' }}>{t.dueDate}</Text>
+                </View>
+              )}
+              {t.link && (
+                <TouchableOpacity 
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    try {
+                      let url = t.link;
+                      if (!url.startsWith('http')) url = 'https://' + url;
+                      Linking.openURL(url);
+                    } catch (err) {}
+                  }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}
+                >
+                  <Ionicons name="link-outline" size={10} color="#6366f1" />
+                  <Text style={{ fontSize: 9, color: '#6366f1', fontWeight: '800' }}>{(t.linkTitle || 'LINK').toUpperCase()}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </TouchableOpacity>
+        ))}
+        {tasks.length === 0 && (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 40, opacity: 0.3 }}>
+            <Ionicons name="cafe-outline" size={32} color={color} />
+            <Text style={{ fontSize: 10, fontWeight: '700', color: color, marginTop: 4 }}>Clear</Text>
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+function flattenToSteps(tasks) {
+  let steps = [];
+  tasks.forEach(t => {
+    const undoneSubtasks = (t.subtasks || []).filter(s => s.status !== 'done' && s.status !== 'did_my_best');
+    if (undoneSubtasks.length > 0) {
+      undoneSubtasks.forEach(s => {
+        steps.push({ ...s, parentId: t.id, parentTitle: t.title, isSubtask: true });
+      });
+    } else if (t.status !== 'done' && t.status !== 'did_my_best') {
+      steps.push({ ...t, parentId: null, parentTitle: null, isSubtask: false });
+    }
+  });
+  return steps;
+}
+
+function OneStepAtATimeView({ queue, index, onStatusChange, onExit, onSkip, onBreakDown }) {
+  const [breakVisible, setBreakVisible] = useState(false);
+  const [breakText, setBreakText] = useState('');
+
+  const step = queue[index];
+  if (!step) {
+    return (
+      <Modal visible transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+          <Ionicons name="checkmark-circle" size={80} color="#10b981" />
+          <Text style={{ fontSize: 24, fontWeight: '800', color: '#111827', marginTop: 20, textAlign: 'center' }}>All Steps Complete!</Text>
+          <Text style={{ fontSize: 16, color: '#6b7280', marginTop: 8, textAlign: 'center', marginBottom: 32 }}>You've cleared your focus queue. Great work!</Text>
+          <TouchableOpacity 
+            style={{ backgroundColor: '#8b5cf6', paddingHorizontal: 32, paddingVertical: 16, borderRadius: 16 }}
+            onPress={onExit}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>Back to Tasks</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+    );
+  }
+
+  const currentStatus = step.status || 'pending';
+  const cfg = STATUSES[currentStatus];
+
+  return (
+    <Modal visible transparent animationType="slide">
+      <View style={{ flex: 1, backgroundColor: '#fff' }}>
+        <SafeAreaView style={{ flex: 1 }}>
+          {/* Header */}
+          <View style={{ paddingHorizontal: 20, paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <TouchableOpacity onPress={onExit} style={{ width: 40 }} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}>
+              <Ionicons name="close" size={28} color="#4b5563" />
+            </TouchableOpacity>
+            <Text style={{ fontSize: 14, fontWeight: '800', color: '#8b5cf6', textTransform: 'uppercase', letterSpacing: 1 }}>Focus Flow</Text>
+            <View style={{ width: 40 }} />
+          </View>
+
+          {/* Body */}
+          <View style={{ flex: 1, paddingHorizontal: 32, justifyContent: 'center', alignItems: 'center' }}>
+            <View style={{ marginBottom: 60, alignItems: 'center' }}>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#9ca3af', textTransform: 'uppercase', marginBottom: 12, letterSpacing: 1 }}>Step {index + 1} of {queue.length}</Text>
+              <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+                {queue.map((_, i) => (
+                  <View key={i} style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: i === index ? '#8b5cf6' : (i < index ? '#10b981' : '#f3f4f6') }} />
+                ))}
+              </View>
+            </View>
+
+            {step.parentTitle && (
+              <View style={{ backgroundColor: '#f5f3ff', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8, marginBottom: 12 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#8b5cf6', textTransform: 'uppercase' }}>{step.parentTitle}</Text>
+              </View>
+            )}
+            
+            <Text style={{ fontSize: 32, fontWeight: '800', color: '#111827', textAlign: 'center', marginBottom: 60, lineHeight: 40 }}>{step.title}</Text>
+
+            {/* Status Chip (Replaces DONE button) */}
+            <TouchableOpacity 
+              style={{ 
+                backgroundColor: cfg.color, width: '100%', paddingVertical: 24, borderRadius: 30, alignItems: 'center', 
+                shadowColor: cfg.color, shadowOpacity: 0.4, shadowRadius: 15, elevation: 10,
+                flexDirection: 'row', justifyContent: 'center', gap: 12
+              }}
+              onPress={() => {
+                const next = cfg.next;
+                onStatusChange(step, next);
+              }}
+            >
+              <Ionicons name={cfg.icon} size={24} color="#fff" />
+              <Text style={{ color: '#fff', fontSize: 20, fontWeight: '900', letterSpacing: 1, textTransform: 'uppercase' }}>{cfg.label}</Text>
+            </TouchableOpacity>
+
+            <View style={{ flexDirection: 'row', gap: 16, marginTop: 24, width: '100%' }}>
+              <TouchableOpacity 
+                style={{ flex: 1, backgroundColor: '#f9fafb', paddingVertical: 18, borderRadius: 20, alignItems: 'center', borderWidth: 1, borderColor: '#f3f4f6' }}
+                onPress={() => setBreakVisible(true)}
+              >
+                <Ionicons name="git-branch-outline" size={22} color="#4b5563" />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#4b5563', marginTop: 6 }}>Break it Down</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={{ flex: 1, backgroundColor: '#f9fafb', paddingVertical: 18, borderRadius: 20, alignItems: 'center', borderWidth: 1, borderColor: '#f3f4f6' }}
+                onPress={onSkip}
+              >
+                <Ionicons name="arrow-forward-outline" size={22} color="#4b5563" />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#4b5563', marginTop: 6 }}>Skip</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </SafeAreaView>
+
+        {/* Integrated Breakdown Overlay */}
+        {breakVisible && (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: 24, zIndex: 100 }]}>
+            <View style={styles.morningContent}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: '#111827', marginBottom: 8 }}>Break it Down</Text>
+              <Text style={{ fontSize: 14, color: '#6b7280', marginBottom: 20, textAlign: 'center' }}>What's the very first tiny step to get this moving?</Text>
+              <TextInput 
+                style={[styles.fieldInput, { width: '100%', marginBottom: 20 }]}
+                placeholder="e.g. Open the document..."
+                autoFocus
+                value={breakText}
+                onChangeText={setBreakText}
+                onSubmitEditing={() => {
+                  if (!breakText) return;
+                  onBreakDown(breakText);
+                  setBreakText('');
+                  setBreakVisible(false);
+                }}
+              />
+              <View style={{ flexDirection: 'row', gap: 12, width: '100%' }}>
+                <TouchableOpacity style={[styles.cancelBtn, { flex: 1 }]} onPress={() => setBreakVisible(false)}>
+                  <Text style={styles.cancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={{ flex: 1, backgroundColor: '#8b5cf6', borderRadius: 10, alignItems: 'center', justifyContent: 'center' }} 
+                  onPress={() => {
+                    if (!breakText) return;
+                    onBreakDown(breakText);
+                    setBreakText('');
+                    setBreakVisible(false);
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>Add Step</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+      </View>
+    </Modal>
+  );
+}
+
+function EisenhowerMatrixView({ tasks, onOpen, onConfirmStatus }) {
+  const activeTasks = tasks.filter(t => t.status !== 'done' && t.status !== 'did_my_best');
+  const q1 = activeTasks.filter(t => t.isPriority && t.isUrgent);
+  const q2 = activeTasks.filter(t => t.isPriority && !t.isUrgent);
+  const q3 = activeTasks.filter(t => !t.isPriority && t.isUrgent);
+  const q4 = activeTasks.filter(t => !t.isPriority && !t.isUrgent);
+
+  return (
+    <View style={{ paddingHorizontal: 16, paddingBottom: 100 }}>
+      <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
+        <MatrixQuadrant title="Do First" subtitle="Urgent & Important" color="#ef4444" tasks={q1} onOpen={onOpen} onConfirmStatus={onConfirmStatus} />
+        <MatrixQuadrant title="Schedule" subtitle="Not Urgent but Important" color="#8b5cf6" tasks={q2} onOpen={onOpen} onConfirmStatus={onConfirmStatus} />
+      </View>
+      <View style={{ flexDirection: 'row', gap: 12 }}>
+        <MatrixQuadrant title="Delegate" subtitle="Urgent but Not Important" color="#f59e0b" tasks={q3} onOpen={onOpen} onConfirmStatus={onConfirmStatus} />
+        <MatrixQuadrant title="Eliminate" subtitle="Neither" color="#64748b" tasks={q4} onOpen={onOpen} onConfirmStatus={onConfirmStatus} />
+      </View>
+    </View>
+  );
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // FOCUS YOUR DAY
 // ═════════════════════════════════════════════════════════════════════════════
 
-function FocusYourDay({ tasks, onComplete, forceOpen = false }) {
+function FocusYourDay({ tasks, onComplete, onStartOneStep, selectionMode, forceOpen = false }) {
   const { colors } = useTheme();
   const [step, setStep] = useState(forceOpen ? 1 : 0); // 0 (start), 1 (must do), 2 (procrastinating), 3 (bonus), 4 (final)
   const [selectedIds, setSelectedIds] = useState([]);
@@ -2775,14 +3119,36 @@ function FocusYourDay({ tasks, onComplete, forceOpen = false }) {
   if (step === 0) {
     const hasPriorities = tasks.some(t => t.isPriority);
     return (
-      <TouchableOpacity activeOpacity={0.9} style={styles.fydStart} onPress={() => setStep(1)}>
-        <Ionicons name="sparkles" size={24} color="#fff" />
-        <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={styles.fydStartTitle}>{hasPriorities ? 'Refocus Your Day' : 'Focus Your Day'}</Text>
-          <Text style={styles.fydStartSub}>Take 1 minute to plan your momentum</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color="#fff" style={{ opacity: 0.8 }} />
-      </TouchableOpacity>
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <TouchableOpacity 
+          activeOpacity={0.9} 
+          style={[styles.fydStart, { flex: 1, paddingVertical: 12, paddingHorizontal: 12, borderRadius: 16, justifyContent: 'center' }]} 
+          onPress={() => setStep(1)}
+        >
+          <Ionicons name="sparkles" size={18} color="#fff" style={{ marginRight: 6 }} />
+          <Text style={[styles.fydStartTitle, { fontSize: 13, textAlign: 'center' }]}>
+            {hasPriorities ? 'Refocus' : 'Focus'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          activeOpacity={0.9} 
+          style={[
+            styles.fydStart, 
+            { flex: 1.5, backgroundColor: '#8b5cf6', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 16 },
+            selectionMode && { backgroundColor: '#fff', borderWidth: 2, borderColor: '#8b5cf6' }
+          ]} 
+          onPress={onStartOneStep}
+        >
+          <Text style={[
+            styles.fydStartTitle, 
+            { fontSize: 13, textAlign: 'center', width: '100%' },
+            selectionMode && { color: '#8b5cf6' }
+          ]}>
+            {selectionMode ? 'Exit Selection' : 'One Step At a Time'}
+          </Text>
+        </TouchableOpacity>
+      </View>
     );
   }
 
@@ -3014,6 +3380,8 @@ export default function TasksScreen() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkEditVisible, setBulkEditVisible] = useState(false);
+  const [osaatQueue, setOsaatQueue] = useState([]);
+  const [osaatIndex, setOsaatIndex] = useState(0);
   
   const toggleTaskSelection = (id) => {
     setSelectedIds(prev => {
@@ -3059,6 +3427,62 @@ export default function TasksScreen() {
         }}
       ]
     );
+  };
+
+  const handleOsaatStatusChange = (step, targetStatus) => {
+    if (step.isSubtask) {
+      confirmStatus(step.parentId, targetStatus, step.id);
+    } else {
+      confirmStatus(step.id, targetStatus);
+    }
+    
+    // If it's a completion status, move to next step after a tiny delay for visual feedback
+    if (targetStatus === 'done' || targetStatus === 'did_my_best') {
+      setTimeout(() => {
+        setOsaatIndex(prev => prev + 1);
+      }, 400);
+    } else {
+      // Just update the queue so the chip color changes
+      setOsaatQueue(prev => prev.map((item, i) => i === osaatIndex ? { ...item, status: targetStatus } : item));
+    }
+  };
+
+  const handleOsaatSkip = () => {
+    setOsaatQueue(prev => {
+      const next = [...prev];
+      const [skipped] = next.splice(osaatIndex, 1);
+      next.push(skipped);
+      return next;
+    });
+  };
+
+  const handleOsaatBreakDown = (text) => {
+    const step = osaatQueue[osaatIndex];
+    const newId = generateId();
+    const newStep = {
+      id: newId,
+      title: text,
+      parentId: step.isSubtask ? step.parentId : step.id,
+      parentTitle: step.isSubtask ? step.parentTitle : step.title,
+      isSubtask: true,
+      status: 'pending'
+    };
+    
+    // Update main state (add as subtask)
+    setTasks(prev => prev.map(t => {
+      const tid = step.isSubtask ? step.parentId : step.id;
+      if (t.id === tid) {
+        return { ...t, subtasks: [...(t.subtasks || []), { id: newId, title: text, status: 'pending', subtasks: [] }] };
+      }
+      return t;
+    }));
+
+    // Insert at current position (shifts current step down)
+    setOsaatQueue(prev => {
+      const next = [...prev];
+      next.splice(osaatIndex, 0, newStep);
+      return next;
+    });
   };
 
   // Check for Morning Start UI (Enforced Window: dayStartTime to 11 AM)
@@ -3114,6 +3538,7 @@ export default function TasksScreen() {
   const [filterEnergy, setFilterEnergy] = useState([]);
   const [filterTags, setFilterTags] = useState([]);
   const [filterMode, setFilterMode] = useState('OR'); // 'AND' | 'OR'
+  const [momentumMode, setMomentumMode] = useState('urgent'); // 'urgent' or 'today'
   const [filterStatus, setFilterStatus] = useState([]); // Status filter chips
   const [filterMissedStreak, setFilterMissedStreak] = useState(false);
   const [filterStreak, setFilterStreak] = useState(false);
@@ -3162,6 +3587,57 @@ export default function TasksScreen() {
     }).length,
     pending: tasks.filter(t => t.status === 'pending' || t.status === 'active').length,
     upcoming: tasks.filter(t => t.status === 'upcoming').length,
+    urgentDone: tasks.filter(t => {
+      if (!t.isUrgent) return false;
+      const s = t.statusHistory?.[todayStr];
+      return s === 'done' || s === 'did_my_best';
+    }).length,
+    urgentTotal: tasks.filter(t => t.isUrgent).length,
+    dueDone: tasks.filter(t => {
+      const [ty, tm, td] = todayStr.split('-');
+      const mdy = `${tm}/${td}/${ty}`;
+      const tDate = t.dueDate ? t.dueDate.split('/').map(p => p.padStart(2, '0')).join('/') : null;
+      if (tDate !== mdy) return false;
+      const s = t.statusHistory?.[todayStr];
+      return s === 'done' || s === 'did_my_best';
+    }).length,
+    dueTotal: tasks.filter(t => {
+      const [ty, tm, td] = todayStr.split('-');
+      const mdy = `${tm}/${td}/${ty}`;
+      const tDate = t.dueDate ? t.dueDate.split('/').map(p => p.padStart(2, '0')).join('/') : null;
+      return tDate === mdy;
+    }).length,
+    recurringDone: tasks.filter(t => {
+      const isRec = t.frequency != null || (t.frequencyDays != null && t.frequencyDays > 0) || t.weeklyDay != null;
+      if (!isRec) return false;
+      const s = t.statusHistory?.[todayStr];
+      return s === 'done' || s === 'did_my_best';
+    }).length,
+    recurringTotal: tasks.filter(t => {
+      const isRec = t.frequency != null || (t.frequencyDays != null && t.frequencyDays > 0) || t.weeklyDay != null;
+      if (!isRec) return false;
+      const s = t.statusHistory?.[todayStr];
+      const isDoneToday = s === 'done' || s === 'did_my_best';
+      const isPending = t.status === 'pending' || t.status === 'active' || t.status === 'first_step' || t.status === 'missed';
+      return isDoneToday || isPending;
+    }).length,
+    oneOffDone: tasks.filter(t => {
+      const isRec = t.frequency != null || (t.frequencyDays != null && t.frequencyDays > 0) || t.weeklyDay != null;
+      if (isRec) return false;
+      const s = t.statusHistory?.[todayStr];
+      return s === 'done' || s === 'did_my_best';
+    }).length,
+    oneOffTotal: tasks.filter(t => {
+      const isRec = t.frequency != null || (t.frequencyDays != null && t.frequencyDays > 0) || t.weeklyDay != null;
+      if (isRec) return false;
+      // If it's already done, only count it if it was done TODAY (to keep momentum relevant)
+      if (t.status === 'done' || t.status === 'did_my_best') {
+        const s = t.statusHistory?.[todayStr];
+        return s === 'done' || s === 'did_my_best';
+      }
+      // Otherwise, count all unfinished one-offs regardless of date
+      return true;
+    }).length,
   };
 
   const allTags = Array.from(new Set(tasks.flatMap(t => (t.tags || [])))).sort((a, b) => a.localeCompare(b));
@@ -3502,7 +3978,7 @@ export default function TasksScreen() {
       <ScrollView 
         ref={listRef}
         style={{ flex: 1 }} 
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: 100 }} 
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: selectionMode ? 180 : 100 }} 
         onScroll={handleScroll} 
         scrollEventThrottle={16}
       >
@@ -3515,7 +3991,7 @@ export default function TasksScreen() {
         />
       )}
 
-      <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
+      <View style={{ paddingHorizontal: 16, marginTop: 12, marginBottom: 12 }}>
         {(() => {
           const hour = new Date().getHours();
           if (hour >= 0 && hour < dayStartTime) {
@@ -3578,6 +4054,11 @@ export default function TasksScreen() {
           <FocusYourDay 
             tasks={tasks} 
             forceOpen={forceFocusOpen}
+            selectionMode={selectionMode}
+            onStartOneStep={() => {
+              if (selectionMode) clearSelection();
+              else setSelectionMode(true);
+            }}
             onComplete={(sels, forceClear = false) => {
               setForceFocusOpen(false);
               const todayKey = getLocalDateKey();
@@ -3591,24 +4072,87 @@ export default function TasksScreen() {
             }} 
           />
           
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, marginTop: 12 }}>
-            <View style={[styles.statBox, { backgroundColor: '#f9fafb', padding: 12, borderRadius: 12, alignItems: 'center', width: 90 }]}>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: '#111827' }}>{stats.total}</Text>
-              <Text style={{ fontSize: 11, color: '#6b7280', fontWeight: '600', textTransform: 'uppercase' }}>Total</Text>
+          {/* ── Momentum Bar (Interactive) ── */}
+          <TouchableOpacity 
+            activeOpacity={0.8}
+            onPress={() => setMomentumMode(prev => {
+              if (prev === 'urgent') return 'focus';
+              if (prev === 'focus') return 'due';
+              if (prev === 'due') return 'recurring';
+              if (prev === 'recurring') return 'oneoff';
+              return 'urgent';
+            })}
+            style={{ marginTop: 12, marginBottom: 4 }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#111827' }}>
+                  {momentumMode === 'urgent' ? 'Urgent Momentum' : 
+                   momentumMode === 'focus' ? 'Focus Momentum' : 
+                   momentumMode === 'due' ? 'Due Today Momentum' : 
+                   momentumMode === 'recurring' ? 'Recurring Momentum' : 
+                   'One & Done Momentum'}
+                </Text>
+                {(() => {
+                  let done, total, color, bg;
+                  if (momentumMode === 'urgent') { done = stats.urgentDone; total = stats.urgentTotal; color = '#ef4444'; bg = '#fee2e2'; }
+                  else if (momentumMode === 'focus') { done = stats.today; total = (stats.today + stats.pending); color = '#8b5cf6'; bg = '#f5f3ff'; }
+                  else if (momentumMode === 'due') { done = stats.dueDone; total = stats.dueTotal; color = '#0ea5e9'; bg = '#e0f2fe'; }
+                  else if (momentumMode === 'recurring') { done = stats.recurringDone; total = stats.recurringTotal; color = '#10b981'; bg = '#d1fae5'; }
+                  else { done = stats.oneOffDone; total = stats.oneOffTotal; color = '#f59e0b'; bg = '#fef3c7'; }
+                  
+                  if (total === 0) return null;
+                  const pct = Math.round((done / total) * 100);
+                  return (
+                    <View style={{ backgroundColor: bg, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: color }}>{pct}%</Text>
+                    </View>
+                  );
+                })()}
+              </View>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748b' }}>
+                {(() => {
+                  let done, total, color, label;
+                  if (momentumMode === 'urgent') { done = stats.urgentDone; total = stats.urgentTotal; color = '#ef4444'; label = 'Urgent'; }
+                  else if (momentumMode === 'focus') { done = stats.today; total = (stats.today + stats.pending); color = '#10b981'; label = 'Tasks'; }
+                  else if (momentumMode === 'due') { done = stats.dueDone; total = stats.dueTotal; color = '#0ea5e9'; label = 'Due'; }
+                  else if (momentumMode === 'recurring') { done = stats.recurringDone; total = stats.recurringTotal; color = '#10b981'; label = 'Recurring'; }
+                  else { done = stats.oneOffDone; total = stats.oneOffTotal; color = '#f59e0b'; label = 'One-off'; }
+
+                  if (total === 0) return `No ${label} Tasks`;
+                  return <><Text style={{ color: color }}>{done}</Text> / {total} {label} Done</>;
+                })()}
+              </Text>
             </View>
-            <View style={[styles.statBox, { backgroundColor: '#d1fae5', padding: 12, borderRadius: 12, alignItems: 'center', width: 90 }]}>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: '#059669' }}>{stats.today}</Text>
-              <Text style={{ fontSize: 11, color: '#059669', fontWeight: '600', textTransform: 'uppercase' }}>Done</Text>
+            <View style={{ height: 10, backgroundColor: '#f1f5f9', borderRadius: 5, overflow: 'hidden' }}>
+              <View 
+                style={{ 
+                  height: '100%', 
+                  width: `${(() => {
+                    let done, total;
+                    if (momentumMode === 'urgent') { done = stats.urgentDone; total = stats.urgentTotal; }
+                    else if (momentumMode === 'focus') { done = stats.today; total = (stats.today + stats.pending); }
+                    else if (momentumMode === 'due') { done = stats.dueDone; total = stats.dueTotal; }
+                    else if (momentumMode === 'recurring') { done = stats.recurringDone; total = stats.recurringTotal; }
+                    else { done = stats.oneOffDone; total = stats.oneOffTotal; }
+                    return total > 0 ? (done / total) * 100 : 0;
+                  })()}%`, 
+                  backgroundColor: momentumMode === 'urgent' ? '#ef4444' : 
+                                   momentumMode === 'focus' ? '#8b5cf6' : 
+                                   momentumMode === 'due' ? '#0ea5e9' : 
+                                   momentumMode === 'recurring' ? '#10b981' : '#f59e0b',
+                  borderRadius: 5,
+                  shadowColor: momentumMode === 'urgent' ? '#ef4444' : 
+                               momentumMode === 'focus' ? '#8b5cf6' : 
+                               momentumMode === 'due' ? '#0ea5e9' : 
+                               momentumMode === 'recurring' ? '#10b981' : '#f59e0b',
+                  shadowOpacity: 0.5,
+                  shadowRadius: 4,
+                }} 
+              />
             </View>
-            <View style={[styles.statBox, { backgroundColor: '#fef3c7', padding: 12, borderRadius: 12, alignItems: 'center', width: 90 }]}>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: '#d97706' }}>{stats.pending}</Text>
-              <Text style={{ fontSize: 11, color: '#d97706', fontWeight: '600', textTransform: 'uppercase' }}>Pending</Text>
-            </View>
-            <View style={[styles.statBox, { backgroundColor: '#e2e8f0', padding: 12, borderRadius: 12, alignItems: 'center', width: 90 }]}>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: '#475569' }}>{stats.upcoming}</Text>
-              <Text style={{ fontSize: 11, color: '#475569', fontWeight: '600', textTransform: 'uppercase' }}>Upcoming</Text>
-            </View>
-          </ScrollView>
+            <Text style={{ fontSize: 9, color: '#9ca3af', fontWeight: '700', textTransform: 'uppercase', marginTop: 4, textAlign: 'center', letterSpacing: 0.5 }}>Tap to Switch View</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -3980,6 +4524,15 @@ export default function TasksScreen() {
             />
       )}
 
+      {/* ── Matrix view ── */}
+      {view === 'matrix' && !overstimulated && (
+        <EisenhowerMatrixView 
+          tasks={filtered}
+          onOpen={setEditingTask}
+          onConfirmStatus={confirmStatus}
+        />
+      )}
+
       </ScrollView>
 
       {/* ── Bulk Action Bar (Sticky Footer) ── */}
@@ -3998,7 +4551,11 @@ export default function TasksScreen() {
               <Text style={styles.bulkActionSub}>Selected</Text>
             </View>
           </View>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false} 
+            contentContainerStyle={{ flexDirection: 'row', gap: 10, paddingLeft: 10 }}
+          >
             <TouchableOpacity style={[styles.bulkActionBtn, { backgroundColor: '#fee2e2' }]} onPress={confirmBulkDelete}>
               <Ionicons name="trash-outline" size={18} color="#ef4444" />
               <Text style={[styles.bulkActionText, { color: '#ef4444' }]}>Delete</Text>
@@ -4007,8 +4564,36 @@ export default function TasksScreen() {
               <Ionicons name="create-outline" size={18} color="#fff" />
               <Text style={[styles.bulkActionText, { color: '#fff' }]}>Edit</Text>
             </TouchableOpacity>
-          </View>
+            <TouchableOpacity 
+              style={[styles.bulkActionBtn, { backgroundColor: '#8b5cf6' }]} 
+              onPress={() => {
+                const selTasks = tasks.filter(t => selectedIds.has(t.id));
+                const steps = flattenToSteps(selTasks);
+                if (steps.length > 0) {
+                  setOsaatQueue(steps);
+                  setOsaatIndex(0);
+                  setSelectionMode(false);
+                } else {
+                  Alert.alert("No Steps", "The selected tasks have no undone items to focus on.");
+                }
+              }}
+            >
+              <Text style={[styles.bulkActionText, { color: '#fff' }]}>One Step At a Time</Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
+      )}
+
+      {/* ── One Step At a Time View ── */}
+      {osaatQueue.length > 0 && (
+        <OneStepAtATimeView 
+          queue={osaatQueue}
+          index={osaatIndex}
+          onStatusChange={handleOsaatStatusChange}
+          onSkip={handleOsaatSkip}
+          onExit={() => { setOsaatQueue([]); setOsaatIndex(0); }}
+          onBreakDown={handleOsaatBreakDown}
+        />
       )}
 
       {/* Detail modal — derive live task so it stays in sync with history edits */}
@@ -4021,6 +4606,16 @@ export default function TasksScreen() {
             onDelete={deleteTask}
             onClose={() => setEditingTask(null)}
             onViewNote={(n, edit = false) => setViewingNote({ ...n, isInitialEdit: edit })}
+            onStartFocus={(t) => {
+              const steps = flattenToSteps([t]);
+              if (steps.length > 0) {
+                setOsaatQueue(steps);
+                setOsaatIndex(0);
+                setEditingTask(null);
+              } else {
+                Alert.alert("No Steps", "This task has no undone items to focus on.");
+              }
+            }}
           />
         );
       })()}

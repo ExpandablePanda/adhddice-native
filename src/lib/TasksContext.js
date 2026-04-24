@@ -173,6 +173,7 @@ export function TasksProvider({ children }) {
 
   // Break Timer State
   const [breakTimer, setBreakTimer] = useState(null); // { remainingSeconds: number, totalSeconds: number }
+  const [gamesUnlockEndTime, setGamesUnlockEndTime] = useState(0);
   
   // Track the timestamp of the last local change and the last saved state hash
   const lastLocalChangeRef = useRef(0);
@@ -191,6 +192,7 @@ export function TasksProvider({ children }) {
           setTasks(event.data.tasks);
           if (event.data.history) setTaskHistory(event.data.history);
           if (event.data.breakTimer !== undefined) setBreakTimer(event.data.breakTimer);
+          if (event.data.gamesUnlockEndTime !== undefined) setGamesUnlockEndTime(event.data.gamesUnlockEndTime);
         }
       };
     }
@@ -212,6 +214,7 @@ export function TasksProvider({ children }) {
         const storedTasks = await AsyncStorage.getItem(`${storagePrefix}tasks`);
         const storedHistory = await AsyncStorage.getItem(`${storagePrefix}task_history`);
         const storedBreak = await AsyncStorage.getItem(`${storagePrefix}break_timer`);
+        const storedUnlock = await AsyncStorage.getItem(`${storagePrefix}games_unlock_end_time`);
         
         if (storedTasks) {
           const parsed = JSON.parse(storedTasks);
@@ -236,6 +239,9 @@ export function TasksProvider({ children }) {
               setBreakTimer(parsed);
             }
           } catch (e) {}
+        }
+        if (storedUnlock) {
+          setGamesUnlockEndTime(parseInt(storedUnlock));
         }
       } catch (e) {
         console.error('Failed to load local tasks', e);
@@ -273,6 +279,9 @@ export function TasksProvider({ children }) {
               } else if (cloud.breakTimer === null) {
                 // cloud explicitly says it's empty
                 setBreakTimer(null);
+              }
+              if (cloud.gamesUnlockEndTime) {
+                setGamesUnlockEndTime(cloud.gamesUnlockEndTime);
               }
             }
           }
@@ -319,6 +328,9 @@ export function TasksProvider({ children }) {
                 // If remote says null (or undefined), stop local timer
                 setBreakTimer(null);
               }
+              if (payload.new.data.gamesUnlockEndTime !== undefined) {
+                setGamesUnlockEndTime(payload.new.data.gamesUnlockEndTime);
+              }
             }
           }
         }
@@ -329,16 +341,16 @@ export function TasksProvider({ children }) {
   }, [user]);
 
   // Track state in refs for immediate sync access
-  const stateRef = useRef({ tasks, taskHistory, breakTimer });
+  const stateRef = useRef({ tasks, taskHistory, breakTimer, gamesUnlockEndTime });
   const needsImmediateSyncRef = useRef(false);
 
   useEffect(() => {
-    stateRef.current = { tasks, taskHistory, breakTimer };
-  }, [tasks, taskHistory, breakTimer]);
+    stateRef.current = { tasks, taskHistory, breakTimer, gamesUnlockEndTime };
+  }, [tasks, taskHistory, breakTimer, gamesUnlockEndTime]);
 
   const saveTasksData = useCallback(async () => {
     if (!loaded) return;
-    const { tasks: t, taskHistory: th, breakTimer: bt } = stateRef.current;
+    const { tasks: t, taskHistory: th, breakTimer: bt, gamesUnlockEndTime: guet } = stateRef.current;
     
     const timerToSave = bt ? { ...bt, lastUpdated: Date.now() } : null;
 
@@ -349,6 +361,7 @@ export function TasksProvider({ children }) {
         tasks: t,
         history: th,
         breakTimer: timerToSave,
+        gamesUnlockEndTime: guet,
         storagePrefix
       });
     }
@@ -356,6 +369,7 @@ export function TasksProvider({ children }) {
     // Always save locally
     await AsyncStorage.setItem(`${storagePrefix}tasks`, JSON.stringify(t));
     await AsyncStorage.setItem(`${storagePrefix}task_history`, JSON.stringify(th));
+    await AsyncStorage.setItem(`${storagePrefix}games_unlock_end_time`, String(guet));
     if (timerToSave) {
       await AsyncStorage.setItem(`${storagePrefix}break_timer`, JSON.stringify(timerToSave));
     } else {
@@ -370,7 +384,7 @@ export function TasksProvider({ children }) {
           .from('user_tasks')
           .upsert({
             user_id: user.id,
-            data: { tasks: t, history: th, breakTimer: timerToSave },
+            data: { tasks: t, history: th, breakTimer: timerToSave, gamesUnlockEndTime: guet },
             updated_at: new Date().toISOString()
           }, { onConflict: 'user_id' });
 
@@ -416,7 +430,7 @@ export function TasksProvider({ children }) {
     return () => {
       if (Platform.OS === 'web') window.removeEventListener('pagehide', handleUnload);
     };
-  }, [tasks, taskHistory, breakTimer, loaded, user, storagePrefix, triggerTasksSync, saveTasksData]);
+  }, [tasks, taskHistory, breakTimer, gamesUnlockEndTime, loaded, user, storagePrefix, triggerTasksSync, saveTasksData]);
 
   // 3. Day-Start Transition Logic
   const { dayStartTime } = useSettings();
@@ -619,6 +633,10 @@ export function TasksProvider({ children }) {
 
       if (isCompletion) {
         unlockPrizeByTaskId(t.id, tasks);
+        if (t.energy === 'low') {
+          setGamesUnlockEndTime(Date.now() + 3600000);
+          needsImmediateSyncRef.current = true;
+        }
       }
 
       logTaskEvent(updated, intentStatus);
@@ -635,6 +653,7 @@ export function TasksProvider({ children }) {
       isSyncing,
       breakTimer, setBreakTimer, startBreak,
       adjustBreakTime, linkPrizeToBreak,
+      gamesUnlockEndTime, setGamesUnlockEndTime,
       completeTask
     }}>
       {children}

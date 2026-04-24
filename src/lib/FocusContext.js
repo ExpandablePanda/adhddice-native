@@ -331,6 +331,15 @@ export function FocusProvider({ children }) {
     });
   };
 
+  const bumpTimer = (key) => {
+    setActiveTimerKeys(prev => {
+      const idx = prev.indexOf(key);
+      if (idx === -1 || idx === 0) return prev;
+      const filtered = prev.filter(k => k !== key);
+      return [key, ...filtered];
+    });
+  };
+
   if (!loaded) return null;
 
   return (
@@ -340,7 +349,7 @@ export function FocusProvider({ children }) {
       goals, setGoals,
       timerState, setTimerState,
       activeTimerKeys,
-      addVisibleTimer, removeVisibleTimer, reorderTimer,
+      addVisibleTimer, removeVisibleTimer, reorderTimer, bumpTimer,
       adjustTimer,
       startTimer, stopTimer, resetTimer,
       isSyncing 

@@ -1,4 +1,5 @@
 import React, { useRef, useMemo } from 'react';
+import { Linking } from 'react-native';
 import { useFrame, useLoader } from '@react-three/fiber/native';
 import { useGLTF, useTexture } from '@react-three/drei/native';
 import * as THREE from 'three';
@@ -150,6 +151,8 @@ export default function TaskCard3D({
   const energy      = task?.energy ?? null;
   const tags        = task?.tags   || [];
   const dueDate     = task?.dueDate || null;
+  const link        = task?.link    || null;
+  const linkTitle   = task?.linkTitle || null;
   const statusHist  = task?.statusHistory || {};
 
   const statusInfo   = STATUSES[status] || STATUSES.pending;
@@ -196,18 +199,20 @@ export default function TaskCard3D({
   const energyMaskTex  = useLoader(THREE.TextureLoader, energyLabel   ? maskUrl(energyLabel, 300, 100)   : DUMMY_URL);
   const streakMaskTex  = useLoader(THREE.TextureLoader, streakLabel   ? maskUrl(streakLabel, 300, 100)   : DUMMY_URL);
   const prizeMaskTex   = useLoader(THREE.TextureLoader, prizeLabel    ? maskUrl(prizeLabel, 400, 100)    : DUMMY_URL);
+  const linkLabel      = `${linkTitle || 'LINK'} 🔗`.toUpperCase();
+  const linkMaskTex    = useLoader(THREE.TextureLoader, link          ? maskUrl(linkLabel, 400, 100)     : DUMMY_URL);
 
   const tagUrls         = tags.length > 0 ? tags.map(t => maskUrl(t.toUpperCase(), 300, 100)) : [DUMMY_URL];
   const tagMaskTextures = useLoader(THREE.TextureLoader, tagUrls);
 
   useMemo(() => {
     const all = [statusMaskTex, title1MaskTex, title2MaskTex, historyMaskTex,
-                 dueMaskTex, energyMaskTex, streakMaskTex, prizeMaskTex, ...tagMaskTextures];
+                 dueMaskTex, energyMaskTex, streakMaskTex, prizeMaskTex, linkMaskTex, ...tagMaskTextures];
     all.forEach(t => {
       if (t) { t.premultiplyAlpha = false; t.generateMipmaps = false; t.needsUpdate = true; }
     });
   }, [statusMaskTex, title1MaskTex, title2MaskTex, historyMaskTex,
-      dueMaskTex, energyMaskTex, streakMaskTex, prizeMaskTex, tagMaskTextures]);
+      dueMaskTex, energyMaskTex, streakMaskTex, prizeMaskTex, linkMaskTex, tagMaskTextures]);
 
   // ── Clone card meshes from shared GLB ────────────────────────────────────
   const { frontCard, backCard } = useMemo(() => {
@@ -257,6 +262,7 @@ export default function TaskCard3D({
   const stW = streakLabel  ? chipW(streakLabel, 0.25)   : 0;
   const hW = chipW('HISTORY', 0.25);
   const prW = prizeLabel ? chipW(prizeLabel, 0.25) : 0;
+  const lW = link ? chipW(linkLabel, 0.25) : 0;
 
   const tagsData = tags.length > 0
     ? tags.map((t, i) => ({ text: t, width: chipW(t), mask: tagMaskTextures[i] }))
@@ -356,6 +362,24 @@ export default function TaskCard3D({
             maskTexture={historyMaskTex}
             onPress={interactive ? onHistoryPress : undefined}
           />
+
+          {link && (
+            <Chip
+              position={[0.9 - lW / 2, -0.8, 0.12]}
+              width={lW} height={0.2}
+              borderColor="#8b5cf6"
+              backgroundColor="#f5f3ff"
+              textColor="#8b5cf6"
+              maskTexture={linkMaskTex}
+              onPress={() => {
+                try {
+                  let url = link;
+                  if (!url.startsWith('http')) url = 'https://' + url;
+                  Linking.openURL(url);
+                } catch (e) {}
+              }}
+            />
+          )}
 
           {/* FOOTER: Tags row */}
           {tagsData.length > 0 && (
