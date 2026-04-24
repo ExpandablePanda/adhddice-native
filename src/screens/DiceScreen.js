@@ -733,6 +733,14 @@ export default function DiceScreen({ navigation, route }) {
   const { economy, spendPoints, addFreeRoll, addTokens, getRollCost, getReshuffleCost, getPrizeEditCost } = useEconomy();
   const { user, storagePrefix } = useProfile();
   const isFocused = useIsFocused();
+  const [isVisible, setIsVisible] = useState(true);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const handleVisibility = () => setIsVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
 
   const [pools, setPools]           = useState(DEFAULT_POOLS);
   const [dailyBoard, setDailyBoard] = useState(null); // the generated faceMap
@@ -1444,7 +1452,7 @@ export default function DiceScreen({ navigation, route }) {
               disabled={rolling}
               style={{ alignItems: 'center', justifyContent: 'center' }}
             >
-              {isFocused ? (
+              {isFocused && isVisible ? (
                 <Dice3D 
                   size={Platform.OS === 'web' ? Math.min(SCREEN_W * 0.8, 320) : SCREEN_W * 0.8} 
                   rolling={rolling} 

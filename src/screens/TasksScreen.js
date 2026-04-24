@@ -1369,6 +1369,14 @@ function TaskDetailModal({ task, onSave, onDelete, onClose, onViewNote, onStartF
   const [showNotePicker, setShowNotePicker] = useState(false);
   const [noteSearch, setNoteSearch] = useState('');
   const { notes, updateNote, addNote } = useNotes();
+
+  // Persist draft to storage so reloads don't lose work
+  useEffect(() => {
+    if (draft && (draft.title || draft.subtasks?.length > 0)) {
+      AsyncStorage.setItem('adhddice_task_draft', JSON.stringify(draft));
+    }
+  }, [draft]);
+
   const isNew = !task.id;
 
   // noteEditorState: null | { isNew: true, taskId: string } | { note: NoteObject }
@@ -3341,6 +3349,14 @@ export default function TasksScreen() {
     breakTimer, setBreakTimer, completeTask 
   } = useTasks();
   const [refreshing, setRefreshing] = useState(false);
+  const [isVisible, setIsVisible] = useState(true);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const handleVisibility = () => setIsVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -3434,6 +3450,26 @@ export default function TasksScreen() {
       ]
     );
   };
+
+  // ── Draft Persistence ──
+  useEffect(() => {
+    const restoreDraft = async () => {
+      try {
+        const saved = await AsyncStorage.getItem('adhddice_task_draft');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && parsed.id !== undefined) {
+            setEditingTask(parsed);
+          }
+        }
+      } catch (e) {}
+    };
+    restoreDraft();
+  }, []);
+
+  // We only remove the draft when setEditingTask(null) is called AFTER mounting.
+  // Actually, a safer way is to just let TaskDetailModal handle the saving, 
+  // and we only clear it when onSave or onClose is called.
 
   const handleOsaatStatusChange = (step, targetStatus) => {
     if (step.isSubtask) {
@@ -3932,6 +3968,7 @@ export default function TasksScreen() {
         // Save all changes EXCEPT status, then trigger completion modal
         setTasks(prev => prev.map(t => String(t.id) === String(draft.id) ? { ...draft, status: existing.status } : t));
         setEditingTask(null);
+        AsyncStorage.removeItem('adhddice_task_draft');
         setTimeout(() => {
           if (subtaskRolls >= 1) {
             setBulkRollCount(subtaskRolls + 1);
@@ -3948,6 +3985,7 @@ export default function TasksScreen() {
       : [...prev, { ...draft, id: generateId() }]
     );
     setEditingTask(null);
+    AsyncStorage.removeItem('adhddice_task_draft');
 
     // Bank rolls for subtasks checked off during editing
     if (subtaskRolls > 0) {
@@ -3970,6 +4008,7 @@ export default function TasksScreen() {
   function deleteTask(id) {
     setTasks(prev => prev.filter(t => String(t.id) !== String(id)));
     setEditingTask(null);
+    AsyncStorage.removeItem('adhddice_task_draft');
   }
   function importTasks(payload, isJson = false) {
     if (isJson) {
@@ -4520,7 +4559,7 @@ export default function TasksScreen() {
       )}
 
       {/* ── Card view ── */}
-      {view === 'cards' && !overstimulated && isFocused && (
+      {view === 'cards' && !overstimulated && isFocused && isVisible && (
         filtered.length === 0
           ? <Text style={styles.empty}>No tasks — tap New or import.</Text>
           : <CardViewCanvas
@@ -4612,7 +4651,7 @@ export default function TasksScreen() {
             task={liveEditingTask}
             onSave={saveTask}
             onDelete={deleteTask}
-            onClose={() => setEditingTask(null)}
+            onClose={() => { setEditingTask(null); AsyncStorage.removeItem('adhddice_task_draft'); }}
             onViewNote={(n, edit = false) => setViewingNote({ ...n, isInitialEdit: edit })}
             onStartFocus={(t) => {
               const steps = flattenToSteps([t]);
