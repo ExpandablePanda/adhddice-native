@@ -16,7 +16,7 @@ export default function SettingsScreen() {
   const { setTasks } = useTasks();
   const { isDark, toggleTheme, colors } = useTheme();
   const { logout, user, storagePrefix } = useProfile();
-  const { dayStartTime, resetSubtasksOnParentReset, updateSettings } = useSettings();
+  const { dayStartTime, resetSubtasksOnParentReset, highlightColor, updateSettings } = useSettings();
   const [exportedData, setExportData] = useState('');
   const [showImport, setShowImport] = useState(false);
   const [importDataText, setImportDataText] = useState('');
@@ -253,6 +253,42 @@ export default function SettingsScreen() {
               trackColor={{ false: colors.border, true: colors.primary }}
               thumbColor={Platform.OS === 'ios' ? '#fff' : (resetSubtasksOnParentReset ? colors.primary : '#f4f3f4')}
             />
+          </View>
+
+          <View style={[styles.cardRow, styles.cardRowLast]}>
+            <View style={[styles.iconBox, { backgroundColor: colors.primary + '15' }]}>
+              <Ionicons name="color-palette-outline" size={20} color={colors.primary} />
+            </View>
+            <View style={styles.rowBody}>
+              <Text style={styles.rowTitle}>Highlight Mode</Text>
+              <Text style={styles.rowDesc}>Choose your primary theme color.</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
+                {[
+                  { label: 'Default', value: null, color: isDark ? '#818cf8' : '#4f46e5' },
+                  { label: 'Purple', value: '#6d28d9', color: '#6d28d9' },
+                  { label: 'Deep', value: '#4c1d95', color: '#4c1d95' },
+                  { label: 'Teal', value: '#0d9488', color: '#0d9488' },
+                  { label: 'Emerald', value: '#059669', color: '#059669' },
+                  { label: 'Rose', value: '#e11d48', color: '#e11d48' },
+                  { label: 'Amber', value: '#d97706', color: '#d97706' },
+                  { label: 'Sky', value: '#0284c7', color: '#0284c7' },
+                ].map(c => (
+                  <TouchableOpacity 
+                    key={c.label}
+                    onPress={() => updateSettings({ highlightColor: c.value })}
+                    style={{
+                      width: 44, height: 44, borderRadius: 22,
+                      backgroundColor: c.color,
+                      borderWidth: highlightColor === c.value ? 3 : 0,
+                      borderColor: colors.textPrimary,
+                      alignItems: 'center', justifyContent: 'center'
+                    }}
+                  >
+                    {highlightColor === c.value && <Ionicons name="checkmark" size={20} color="#fff" />}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
           </View>
         </View>
 

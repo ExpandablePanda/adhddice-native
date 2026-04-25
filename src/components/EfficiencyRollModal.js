@@ -12,6 +12,7 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
   const [selectedOpt, setSelectedOpt] = useState(null);
   const [multiplier, setMultiplier] = useState(1);
   const [finalResults, setFinalResults] = useState([]); // Array of winners
+  const [earnedTokens, setEarnedTokens] = useState(0);
   
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
   const [currentSubs, setCurrentSubs] = useState([]);
@@ -46,6 +47,7 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
       setCurrentTaskIndex(0);
       setAnimationStage('idle');
       setMultiplier(1);
+      setEarnedTokens(0);
     }
   }, [visible]);
 
@@ -55,7 +57,7 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
     setCurrentTaskIndex(0);
     
     // Multiplier is decided but hidden
-    setMultiplier(Math.floor(Math.random() * 4) + 1);
+    setMultiplier(Math.floor(Math.random() * 6) + 1);
 
     rollNextTask(0);
   }
@@ -77,11 +79,13 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
       setAnimationStage('settled');
       setCurrentSubRollingIndex(-1);
       
+      const winner = Math.max(...accumulatedSubs);
+      
       setTimeout(() => {
         setAnimationStage('cleanup');
-        const winner = Math.max(...accumulatedSubs);
         
         setTimeout(() => {
+          if (winner > 15) setEarnedTokens(prev => prev + 1);
           setFinalResults(prev => [...prev, winner]);
           rollNextTask(taskIdx + 1);
         }, 250);
@@ -113,10 +117,14 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
   function handleRollMultiplier() {
     setStep('rolling_mult');
     playRollSound();
-    // D4 roll animation for 2 seconds
+    // D6 roll animation for 1.2 second
     setTimeout(() => {
-      setStep('results');
-    }, 1000);
+      setStep('show_mult');
+      // Show result face for 1.2s
+      setTimeout(() => {
+        setStep('results');
+      }, 1200);
+    }, 1200);
   }
 
   const sum = finalResults.reduce((acc, curr) => acc + curr, 0);
@@ -125,7 +133,7 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
 
   const handleClaim = () => {
     if (mode === 'reward') {
-      addReward(payoutPoints, payoutXp);
+      addReward(payoutPoints, payoutXp, earnedTokens);
     } else {
       removeReward(payoutPoints, 0); // No XP deduction
     }
@@ -245,7 +253,7 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
               </Text>
               <TouchableOpacity style={[styles.beginBtn, { backgroundColor: mode === 'reward' ? '#4f46e5' : '#111827' }]} onPress={handleRollMultiplier}>
                 <Ionicons name={mode === 'reward' ? 'flash' : 'shield-checkmark'} size={20} color="#fff" style={{marginRight: 8}}/>
-                <Text style={styles.beginBtnText}>Roll {mode === 'reward' ? 'Multiplier' : 'Mitigation'} (D4)</Text>
+                <Text style={styles.beginBtnText}>Roll {mode === 'reward' ? 'Multiplier' : 'Mitigation'} (D6)</Text>
               </TouchableOpacity>
             </>
           )}
@@ -258,8 +266,22 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
                 <Text style={styles.sumVal}>{sum}</Text>
               </View>
               <View style={{ alignItems: 'center', marginVertical: 40 }}>
-                <Text style={[styles.sumLabel, { color: mode === 'reward' ? '#6d28d9' : '#ef4444' }]}>ROLLING D4</Text>
-                <AnimatedRollingDice size={100} color={mode === 'reward' ? '#6d28d9' : '#ef4444'} />
+                <Text style={[styles.sumLabel, { color: mode === 'reward' ? '#6d28d9' : '#ef4444' }]}>ROLLING D6</Text>
+                <Dice3D size={140} rolling={true} color={mode === 'reward' ? '#6d28d9' : '#ef4444'} type="d6" />
+              </View>
+            </>
+          )}
+
+          {step === 'show_mult' && (
+            <>
+              <Text style={styles.title}>{mode === 'reward' ? 'Multiplier Result!' : 'Mitigation Result!'}</Text>
+              <View style={styles.sumResultArea}>
+                <Text style={styles.sumLabel}>{mode === 'reward' ? 'Static Total' : 'Gross Penalty'}</Text>
+                <Text style={styles.sumVal}>{sum}</Text>
+              </View>
+              <View style={{ alignItems: 'center', marginVertical: 40 }}>
+                <Text style={[styles.sumLabel, { color: mode === 'reward' ? '#6d28d9' : '#ef4444' }]}>{multiplier}x</Text>
+                <Dice3D size={140} rolling={false} result={multiplier} color={mode === 'reward' ? '#6d28d9' : '#ef4444'} type="d6" />
               </View>
             </>
           )}
@@ -284,7 +306,7 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
               <View style={[styles.multArea, { backgroundColor: mode === 'reward' ? '#eef2ff' : '#fff1f2' }]}>
                 <Ionicons name={mode === 'reward' ? 'close-outline' : 'remove-circle-outline'} size={24} color={mode === 'reward' ? '#6366f1' : '#ef4444'} />
                 <Text style={[styles.multText, { color: mode === 'reward' ? '#4f46e5' : '#ef4444' }]}>
-                  {mode === 'reward' ? `D4 Multiplier: ${multiplier}x` : `D4 Mitigation: ${multiplier}x factor`}
+                  {mode === 'reward' ? `D6 Multiplier: ${multiplier}x` : `D6 Mitigation: ${multiplier}x factor`}
                 </Text>
               </View>
 
@@ -301,6 +323,12 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
                     <View style={styles.payoutItem}>
                       <Text style={styles.payoutVal}>{payoutXp}</Text>
                       <Text style={styles.payoutLabel}>XP</Text>
+                    </View>
+                  )}
+                  {mode === 'reward' && earnedTokens > 0 && (
+                    <View style={styles.payoutItem}>
+                      <Text style={[styles.payoutVal, { color: '#8b5cf6' }]}>{earnedTokens}</Text>
+                      <Text style={styles.payoutLabel}>Tokens</Text>
                     </View>
                   )}
                 </View>
@@ -322,33 +350,6 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
   );
 }
 
-function AnimatedRollingDice({ size, color }) {
-  const rotateAnim = useRef(new Animated.Value(0)).current;
-  
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(rotateAnim, {
-          toValue: 1,
-          duration: 400,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-  }, [rotateAnim]);
-
-  const spin = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-
-  return (
-    <Animated.View style={{ transform: [{ rotate: spin }] }}>
-      <Ionicons name="dice" size={size} color={color} />
-    </Animated.View>
-  );
-}
 
 const styles = StyleSheet.create({
   header: {

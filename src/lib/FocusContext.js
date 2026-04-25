@@ -116,21 +116,33 @@ export function FocusProvider({ children }) {
         try { setActiveTimerKeys(JSON.parse(storedVisKeys)); } catch(e) {}
       }
 
+      const localUpdated = await AsyncStorage.getItem(`${storagePrefix}focus_last_updated`);
+      const localTs = localUpdated ? parseInt(localUpdated) : 0;
+
       if (user) {
         try {
-          const { data } = await supabase.from('user_focus').select('data').eq('user_id', user.id).single();
+          const { data } = await supabase.from('user_focus').select('data, updated_at').eq('user_id', user.id).single();
           if (data?.data) {
-            isRemoteUpdateRef.current = true;
-            const cloud = data.data;
-            if (cloud.entries) setEntries(cloud.entries.map(e => ({ ...e, date: new Date(e.date) })));
-            if (cloud.categories) setCategories(cloud.categories);
-            if (cloud.goals) setGoals(cloud.goals);
-            if (cloud.timerState && typeof cloud.timerState === 'object') {
-              setTimerState(cloud.timerState);
-            } else if (cloud.timerState === null) {
-              setTimerState({});
+            const cloudTs = new Date(data.updated_at).getTime();
+            if (cloudTs > localTs) {
+              isRemoteUpdateRef.current = true;
+              const cloud = data.data;
+              if (cloud.entries) setEntries(cloud.entries.map(e => ({ ...e, date: new Date(e.date) })));
+              if (cloud.categories) setCategories(cloud.categories);
+              if (cloud.goals) setGoals(cloud.goals);
+              if (cloud.timerState && typeof cloud.timerState === 'object') {
+                const sanitized = {};
+                Object.entries(cloud.timerState).forEach(([k, v]) => { if (v && typeof v === 'object') sanitized[k] = v; });
+                setTimerState(sanitized);
+              } else if (cloud.timerState === null) {
+                setTimerState({});
+              }
+              if (cloud.activeTimerKeys && Array.isArray(cloud.activeTimerKeys) && cloud.activeTimerKeys.length > 0) {
+                setActiveTimerKeys(cloud.activeTimerKeys);
+              }
+            } else if (localTs > cloudTs + 2000) {
+              needsImmediateSyncRef.current = true;
             }
-            if (cloud.activeTimerKeys) setActiveTimerKeys(cloud.activeTimerKeys);
           }
         } catch (e) {
           console.log('Focus sync skipped', e);
@@ -188,23 +200,26 @@ export function FocusProvider({ children }) {
       broadcastRef.current.postMessage({ type: 'FOCUS_UPDATE', ...focusData, storagePrefix });
     }
 
-    // Save locally
+    const now = Date.now();
     await AsyncStorage.setItem(`${storagePrefix}focus_entries`, JSON.stringify(e));
     await AsyncStorage.setItem(`${storagePrefix}focus_cats`, JSON.stringify(c));
     await AsyncStorage.setItem(`${storagePrefix}focus_goals`, JSON.stringify(g));
     await AsyncStorage.setItem(`${storagePrefix}timer_state`, JSON.stringify(ts));
     await AsyncStorage.setItem(`${storagePrefix}active_timer_keys`, JSON.stringify(atk));
+    await AsyncStorage.setItem(`${storagePrefix}focus_last_updated`, String(now));
 
-    setIsSyncing(true);
-    try {
-      const { error } = await supabase
-        .from('user_focus')
-        .upsert({ user_id: user.id, data: focusData, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-      if (error) throw error;
-    } catch (err) {
-      console.error('Focus cloud save failed', err);
-    } finally {
-      setIsSyncing(false);
+    if (user) {
+      setIsSyncing(true);
+      try {
+        const { error } = await supabase
+          .from('user_focus')
+          .upsert({ user_id: user.id, data: focusData, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+        if (error) throw error;
+      } catch (err) {
+        console.error('Focus cloud save failed', err);
+      } finally {
+        setIsSyncing(false);
+      }
     }
   }, [loaded, user, storagePrefix]);
 
@@ -236,9 +251,21 @@ export function FocusProvider({ children }) {
     }
 
     const handleUnload = () => saveFocusData();
-    if (Platform.OS === 'web') window.addEventListener('pagehide', handleUnload);
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        saveFocusData();
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      window.addEventListener('pagehide', handleUnload);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
     return () => {
-      if (Platform.OS === 'web') window.removeEventListener('pagehide', handleUnload);
+      if (Platform.OS === 'web') {
+        window.removeEventListener('pagehide', handleUnload);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
     };
   }, [entries, categories, goals, timerState, activeTimerKeys, loaded, user, storagePrefix, triggerFocusSync, saveFocusData]);
 
@@ -300,8 +327,11 @@ export function FocusProvider({ children }) {
   };
 
   const removeVisibleTimer = (key) => {
-    setActiveTimerKeys(prev => prev.filter(k => k !== key));
-    resetTimer(key); // Automatically reset when removed from dashboard
+    setActiveTimerKeys(prev => {
+      const next = prev.filter(k => k !== key);
+      return next.length > 0 ? next : ['work']; // Never let it be empty
+    });
+    resetTimer(key); 
   };
 
   const adjustTimer = (key, deltaSec) => {

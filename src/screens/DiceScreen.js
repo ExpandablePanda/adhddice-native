@@ -15,7 +15,7 @@ import { useEconomy } from '../lib/EconomyContext';
 import { useTheme } from '../lib/ThemeContext';
 import { useProfile } from '../lib/ProfileContext';
 import { supabase } from '../lib/supabase';
-import { useTasks } from '../lib/TasksContext';
+import { useTasks, getAppDayKey } from '../lib/TasksContext';
 import { useSettings } from '../lib/SettingsContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ScrollToTop from '../components/ScrollToTop';
@@ -1045,19 +1045,20 @@ export default function DiceScreen({ navigation, route }) {
     
     async function checkDailyPrompt() {
       const now = new Date();
-      if (now.getHours() < dayStartTime) return; // Only prompt at or after rollover time
+      if (now.getHours() < dayStartTime) return; // Rollover hasn't happened yet
       
-      const todayString = now.toDateString();
+      const todayKey = getAppDayKey(dayStartTime);
       const promptKey = `${storagePrefix}last_daily_reshuffle_prompt`;
       
-      // If the board is ALREADY from today, we don't need to prompt for a refresh
-      if (dailyBoard.date === todayString) return;
-
+      // If the day has changed since our last prompt, reset the ref
       const lastPrompt = await AsyncStorage.getItem(promptKey);
-      if (lastPrompt !== todayString) {
-        hasPromptedRef.current = true;
-        // Mark as prompted today immediately to avoid multiple alerts
-        await AsyncStorage.setItem(promptKey, todayString);
+      if (lastPrompt !== todayKey) {
+        hasPromptedRef.current = false;
+      }
+      if (hasPromptedRef.current) return;
+
+      // If the board is ALREADY from today, we don't need to prompt
+      if (dailyBoard.date === todayKey) return;
         
         Alert.alert(
           'Daily Board Refresh 🎲',
@@ -1067,16 +1068,17 @@ export default function DiceScreen({ navigation, route }) {
             { 
               text: 'Reshuffle Now', 
               onPress: () => {
-                const newBoard = { date: todayString, map: generateDailyPool(pools) };
+                const todayKey = getAppDayKey(dayStartTime);
+                const newBoard = { date: todayKey, map: generateDailyPool(pools) };
                 setDailyBoard(newBoard);
+                AsyncStorage.setItem(promptKey, todayKey);
                 Alert.alert('Success!', 'Board has been reshuffled for free.');
               }
             }
           ]
         );
       }
-    }
-    checkDailyPrompt();
+      checkDailyPrompt();
   }, [loaded, dailyBoard?.date, storagePrefix, pools]);
 
   const submitRollResult = (face) => {

@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useAudioPlayer } from 'expo-audio';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Alert, Animated, Easing, Dimensions, Modal, Image, Platform
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -12,7 +12,7 @@ import { useTheme } from '../lib/ThemeContext';
 import { useEconomy } from '../lib/EconomyContext';
 import ScrollToTop from '../components/ScrollToTop';
 import { colors } from '../theme';
-import { useTasks, getLocalDateKey, getAppDayKey } from '../lib/TasksContext';
+import { useTasks, getLocalDateKey, getAppDayKey, STATUSES, STATUS_ORDER, normalizeDateKey } from '../lib/TasksContext';
 import TaskResultModal from '../components/TaskResultModal';
 
 const SCREEN_W = Dimensions.get('window').width;
@@ -32,7 +32,7 @@ const BATTLE_W = (SCREEN_W - 50) / 2;
 const BATTLE_H = BATTLE_W * 1.4;
 
 // ── Task pool for cards ──────────────────────────────────────────────────────
-const STATUSES = {
+const GAME_CARD_STATUSES = {
   first_step: { color: '#8b5cf6' },
   active:   { color: '#eab308' },
   pending:  { color: '#f59e0b' },
@@ -81,7 +81,7 @@ function getUnusedTask(currentCards, taskPool) {
 // ═════════════════════════════════════════════════════════════════════════════
 
 function GameCard({ card, faceDown, small, large, onPress, highlighted, dimmed, flipAnim }) {
-  const statusColor = card ? (STATUSES[card.status]?.color || '#6b7280') : '#ffffff';
+  const statusColor = card ? (GAME_CARD_STATUSES[card.status]?.color || '#6b7280') : '#ffffff';
   const [showFront, setShowFront] = useState(!faceDown);
 
   useEffect(() => {
@@ -1119,10 +1119,15 @@ function DopamineMatch({ onBack, colors, tasks }) {
 
 function LockedGamesView({ tasks, colors }) {
   const navigation = useNavigation();
+  const { completeTask, consumePlayCredits } = useTasks();
+  const [selectedTask, setSelectedTask] = useState(null);
   const lowEffortTasks = tasks
-    .filter(t => t.energy === 'low' && t.status !== 'done' && t.status !== 'did_my_best')
-    .sort(() => Math.random() - 0.5)
-    .slice(0, 3);
+    .filter(t => {
+      const todayKey = getAppDayKey(6); // Default 6am, should ideally use context but GamesScreen handles its own today logic or we use TasksContext helper
+      const isDueToday = normalizeDateKey(t.dueDate) === todayKey;
+      return t.energy === 'low' && t.status !== 'done' && t.status !== 'did_my_best' && t.status !== 'upcoming' && isDueToday;
+    })
+    .sort((a, b) => (a.title > b.title ? 1 : -1));
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]} edges={['left', 'right']}>
@@ -1133,7 +1138,7 @@ function LockedGamesView({ tasks, colors }) {
         </View>
       </View>
       
-      <ScrollView contentContainerStyle={[styles.scrollContent, { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 30 }]}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { alignItems: 'center', paddingHorizontal: 20, paddingTop: 40 }]}>
         <View style={{ width: 100, height: 100, borderRadius: 50, backgroundColor: colors.primary + '15', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
           <Ionicons name="lock-closed" size={48} color={colors.primary} />
         </View>
@@ -1143,41 +1148,132 @@ function LockedGamesView({ tasks, colors }) {
         </Text>
         
         <Text style={{ fontSize: 16, color: colors.textSecondary, textAlign: 'center', lineHeight: 24, marginBottom: 30 }}>
-          Earn your playtime! Complete any <Text style={{ color: colors.primary, fontWeight: '800' }}>Low Effort</Text> task to unlock all games for 1 hour.
+          Earn your playtime! Complete any <Text style={{ color: colors.primary, fontWeight: '800' }}>Low Effort</Text> task to unlock 30 minutes of play.
         </Text>
 
-        <View style={{ width: '100%', gap: 12, marginBottom: 40 }}>
+        <View style={{ width: '100%', gap: 10, marginBottom: 40 }}>
           <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1, textAlign: 'center', marginBottom: 4 }}>
-            Suggested Tasks
+            Low Energy Task Menu
           </Text>
           {lowEffortTasks.length > 0 ? (
             lowEffortTasks.map(t => (
               <TouchableOpacity 
                 key={t.id} 
-                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#f3f4f6', gap: 12 }}
+                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, gap: 12 }}
                 onPress={() => navigation.navigate('Tasks')}
               >
-                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: '#d1fae5', alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name="flash" size={16} color="#10b981" />
+                <TouchableOpacity 
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    setSelectedTask(t);
+                  }}
+                  style={{ 
+                    paddingHorizontal: 10, 
+                    paddingVertical: 6, 
+                    borderRadius: 8, 
+                    backgroundColor: STATUSES[t.status]?.color || colors.primary,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minWidth: 80
+                  }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#fff', textTransform: 'uppercase' }}>
+                    {STATUSES[t.status]?.label || t.status}
+                  </Text>
+                </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textPrimary }} numberOfLines={1}>
+                    {t.title}
+                  </Text>
+                  {t.tags?.length > 0 && (
+                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>{t.tags.join(', ')}</Text>
+                  )}
                 </View>
-                <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: colors.textPrimary }} numberOfLines={1}>
-                  {t.title}
-                </Text>
-                <Ionicons name="chevron-forward" size={16} color="#ccc" />
+                <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
               </TouchableOpacity>
             ))
           ) : (
-            <View style={{ padding: 20, alignItems: 'center', backgroundColor: '#f9fafb', borderRadius: 16, borderStyle: 'dashed', borderWidth: 1, borderColor: '#e5e7eb' }}>
+            <View style={{ padding: 20, alignItems: 'center', backgroundColor: colors.surface, borderRadius: 16, borderStyle: 'dashed', borderWidth: 1, borderColor: colors.border }}>
               <Text style={{ fontSize: 14, color: colors.textMuted, fontStyle: 'italic' }}>No low effort tasks available.</Text>
             </View>
           )}
         </View>
 
         <TouchableOpacity 
-          style={{ backgroundColor: colors.primary, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 16, shadowColor: colors.primary, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6 }}
+          style={{ backgroundColor: colors.primary, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 16, shadowColor: colors.primary, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6, marginBottom: 16 }}
           onPress={() => navigation.navigate('Tasks')}
         >
           <Text style={{ color: '#fff', fontSize: 16, fontWeight: '800' }}>Go to Tasks</Text>
+        </TouchableOpacity>
+
+        {/* Status Picker Modal */}
+        <Modal
+          visible={!!selectedTask}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setSelectedTask(null)}
+        >
+          <TouchableOpacity 
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}
+            activeOpacity={1}
+            onPress={() => setSelectedTask(null)}
+          >
+            <View style={{ width: '100%', backgroundColor: '#fff', borderRadius: 24, padding: 24, gap: 16 }}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: '#111827' }}>Update Status</Text>
+              <Text style={{ fontSize: 14, color: '#6b7280', marginBottom: 8 }}>{selectedTask?.title}</Text>
+              
+              <View style={{ gap: 10 }}>
+                {STATUS_ORDER.map(s => (
+                  <TouchableOpacity
+                    key={s}
+                    style={{ 
+                      flexDirection: 'row', 
+                      alignItems: 'center', 
+                      gap: 12, 
+                      padding: 14, 
+                      borderRadius: 14, 
+                      backgroundColor: selectedTask?.status === s ? STATUSES[s].color + '15' : '#f9fafb',
+                      borderWidth: 1.5,
+                      borderColor: selectedTask?.status === s ? STATUSES[s].color : 'transparent'
+                    }}
+                    onPress={() => {
+                      completeTask(selectedTask.id, s);
+                      setSelectedTask(null);
+                    }}
+                  >
+                    <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: STATUSES[s].color, alignItems: 'center', justifyContent: 'center' }}>
+                      <Ionicons name={STATUSES[s].icon} size={18} color="#fff" />
+                    </View>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: selectedTask?.status === s ? STATUSES[s].color : '#374151' }}>
+                      {STATUSES[s].label}
+                    </Text>
+                    {selectedTask?.status === s && (
+                      <Ionicons name="checkmark-circle" size={20} color={STATUSES[s].color} style={{ marginLeft: 'auto' }} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TouchableOpacity 
+                onPress={() => setSelectedTask(null)}
+                style={{ marginTop: 8, padding: 16, alignItems: 'center' }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '700', color: '#9ca3af' }}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        <TouchableOpacity 
+          onPress={() => {
+            Alert.alert("Admin Unlock", "Manual override activated. Adding 30 minutes.", [
+              { text: "Cancel", style: "cancel" },
+              { text: "Confirm", onPress: () => consumePlayCredits(-1800) }
+            ]);
+          }}
+          style={{ padding: 12 }}
+        >
+          <Text style={{ color: colors.textMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' }}>Unlock Now (Manual)</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -1190,33 +1286,42 @@ function LockedGamesView({ tasks, colors }) {
 
 export default function GamesScreen() {
   const { colors } = useTheme();
-  const { tasks, gamesUnlockEndTime } = useTasks();
+  const { tasks, gamesPlayCredits, consumePlayCredits } = useTasks();
   const [currentGame, setCurrentGame] = useState('hub');
   const scrollRef = useRef(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [timeLeft, setTimeLeft] = useState('');
+  const hasAlertedRef = useRef(false);
 
   const handleScroll = (event) => setShowScrollTop(event.nativeEvent.contentOffset.y > 300);
 
   // Unlock logic
-  const isUnlocked = gamesUnlockEndTime > Date.now();
+  const isUnlocked = gamesPlayCredits > 0;
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isUnlocked || currentGame === 'hub') return;
+      const interval = setInterval(() => {
+        consumePlayCredits(1);
+      }, 1000);
+      return () => clearInterval(interval);
+    }, [isUnlocked, consumePlayCredits, currentGame])
+  );
 
   useEffect(() => {
-    if (!isUnlocked) return;
-    const interval = setInterval(() => {
-      const now = Date.now();
-      const remaining = gamesUnlockEndTime - now;
-      if (remaining <= 0) {
-        setTimeLeft('');
-        clearInterval(interval);
-      } else {
-        const m = Math.floor(remaining / 60000);
-        const s = Math.floor((remaining % 60000) / 1000);
-        setTimeLeft(`${m}:${String(s).padStart(2, '0')}`);
+    if (gamesPlayCredits <= 0) {
+      setTimeLeft('0:00');
+      if (currentGame !== 'hub' && !hasAlertedRef.current) {
+        Alert.alert("Playtime Over", "Finish your current game! The Games Hub will be locked once you're done until you complete a low energy task.");
+        hasAlertedRef.current = true;
       }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [isUnlocked, gamesUnlockEndTime]);
+      return;
+    }
+    hasAlertedRef.current = false;
+    const m = Math.floor(gamesPlayCredits / 60);
+    const s = gamesPlayCredits % 60;
+    setTimeLeft(`${m}:${String(s).padStart(2, '0')}`);
+  }, [gamesPlayCredits, currentGame]);
 
   if (currentGame === 'war') return <WarGame onBack={() => setCurrentGame('hub')} tasks={tasks} colors={colors} />;
   if (currentGame === 'breather') return <FocusBreather onBack={() => setCurrentGame('hub')} colors={colors} />;

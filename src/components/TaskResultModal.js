@@ -8,11 +8,11 @@ import { colors } from '../theme';
 import Dice3D from './Dice3D';
 
 const OPTIONS = [
-  { label: 'Quick Win [Close to No Effort to Finish]', count: 1, mode: 'highest', color: '#10b981', multiDice: 4 },
-  { label: 'On-Time [Completed On-Time or started a new hot streak]', count: 2, mode: 'highest', color: '#3b82f6', multiDice: 4 },
-  { label: 'Missed or Hot Streak was between 3-6 days', count: 3, mode: 'highest', color: '#8b5cf6', multiDice: 4 },
-  { label: 'Missed or Hot Streak was 7-14 days', count: 2, mode: 'sum', color: '#f59e0b', multiDice: 4 },
-  { label: 'Missed or Hot Streak was higher than 15 days', count: 3, mode: 'sum', color: '#7c3aed', multiDice: 4 },
+  { label: 'Quick Win [Close to No Effort to Finish]', count: 1, mode: 'highest', color: '#10b981', multiDice: 6 },
+  { label: 'On-Time [Completed On-Time or started a new hot streak]', count: 2, mode: 'highest', color: '#3b82f6', multiDice: 6 },
+  { label: 'Missed or Hot Streak was between 3-6 days', count: 3, mode: 'highest', color: '#8b5cf6', multiDice: 6 },
+  { label: 'Missed or Hot Streak was 7-14 days', count: 2, mode: 'sum', color: '#f59e0b', multiDice: 6 },
+  { label: 'Missed or Hot Streak was higher than 15 days', count: 3, mode: 'sum', color: '#7c3aed', multiDice: 6 },
   { label: 'Missed or Hot Streak was higher than 30 days', count: 2, mode: 'sum', color: '#ec4899', multiDice: 20 },
 ];
 
@@ -24,6 +24,7 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
   const [baseRoll, setBaseRoll] = useState(1);
   const [rollDetails, setRollDetails] = useState({ r1: 0, r2: 0, r3: 0 });
   const [multiRoll, setMultiRoll] = useState(1);
+  const [earnedTokens, setEarnedTokens] = useState(0);
   
   const spinVal = useRef(new Animated.Value(0)).current;
   const rollPlayer = useAudioPlayer(require('../../assets/dice-roll.wav'));
@@ -39,6 +40,7 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
     if (visible) {
       setStep('select');
       setSelectedOpt(null);
+      setEarnedTokens(0);
     }
   }, [visible]);
 
@@ -82,14 +84,15 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }).start(() => {
-          const multi = Math.floor(Math.random() * (opt.multiDice || 4)) + 1;
+          const multi = Math.floor(Math.random() * (opt.multiDice || 6)) + 1;
           setMultiRoll(multi);
           
-          const pts = base * multi;
-          const xp = Math.floor(pts / 2);
-          const tks = Math.max(1, Math.floor(pts / 10)); // 1 token per 10 points, min 1
+          // Token logic: 1 token if any base d20 > 15
+          if (r1 > 15 || r2 > 15 || r3 > 15) {
+            setEarnedTokens(1);
+          }
           
-          addReward(pts, xp, tks);
+          setStep('showMulti');
           
           // Wait to reveal multiplier number before showing final aggregate
           setTimeout(() => {
@@ -103,11 +106,9 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
 
   function handleClose() {
     if (task) {
-      // onComplete → handleTaskCompleting → setCompletingTask(null) hides the modal
       const pts = baseRoll * multiRoll;
       const xp = Math.floor(pts / 2);
-      const tks = Math.max(1, Math.floor(pts / 10));
-      onComplete(task.id, { points: pts, xp, tokens: tks });
+      onComplete(task.id, { points: pts, xp, tokens: earnedTokens });
     } else {
       onClose();
     }
@@ -138,13 +139,13 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
               )}
 
               <Text style={styles.sub}>
-                Choose your reward tier: [H] = Highest d20 | [Σ] = Sum of d20s | [xd20] = d20 Multiplier
+                Choose your reward tier: [H] = Highest d20 | [Σ] = Sum of d20s | [xd6] = d6 Multiplier | [xd20] = d20 Multiplier
               </Text>
               {OPTIONS.map((opt, i) => (
                 <TouchableOpacity key={i} style={[styles.optBtn, { borderColor: opt.color }]} onPress={() => handleRoll(opt)}>
                   <View style={[styles.diceBadge, { backgroundColor: opt.color }]}>
                     <Text style={styles.diceText}>
-                      {opt.count}d20{opt.mode === 'highest' ? ' [H]' : (opt.multiDice === 20 ? ' [xd20]' : ' [Σ]')}
+                      {opt.count}d20{opt.mode === 'highest' ? ' [H]' : (opt.multiDice === 20 ? ' [xd20]' : (opt.mode === 'sum' ? ' [Σ]' : ' [xd6]'))}
                     </Text>
                   </View>
                   <Text style={[styles.optLabel, { color: opt.color }]}>{opt.label}</Text>
@@ -190,7 +191,7 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
 
           {step === 'rollMulti' && (
             <View style={styles.rollContainer}>
-              <Text style={styles.title}>Rolling Multiplier (d{selectedOpt.multiDice || 4})...</Text>
+              <Text style={styles.title}>Rolling Multiplier (d{selectedOpt.multiDice || 6})...</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20 }}>
                 <View style={{ alignItems: 'center' }}>
                   <Text style={{ fontSize: 24, fontWeight: '800', color: selectedOpt.color }}>{baseRoll}</Text>
@@ -202,10 +203,26 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
                     <Dice3D size={100} rolling={true} color="#6366f1" />
                   </View>
                 ) : (
-                  <Animated.View style={{ transform: [{ rotate: spinVal.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '1080deg'] }) }] }}>
-                    <Ionicons name="dice" size={80} color="#6366f1" />
-                  </Animated.View>
+                  <View style={{ height: 100, width: 100 }}>
+                    <Dice3D size={100} rolling={true} color="#6366f1" type="d6" />
+                  </View>
                 )}
+              </View>
+            </View>
+          )}
+
+          {step === 'showMulti' && (
+            <View style={styles.rollContainer}>
+              <Text style={styles.title}>Multiplier: {multiRoll}x!</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20 }}>
+                <View style={{ alignItems: 'center' }}>
+                  <Text style={{ fontSize: 24, fontWeight: '800', color: selectedOpt.color }}>{baseRoll}</Text>
+                  <Text style={{ fontSize: 12, color: '#6b7280' }}>Base</Text>
+                </View>
+                <Text style={{ fontSize: 20, fontWeight: '800', color: '#d1d5db' }}>x</Text>
+                <View style={{ height: 100, width: 100 }}>
+                  <Dice3D size={100} rolling={false} result={multiRoll} color="#6366f1" type={selectedOpt.multiDice === 20 ? 'd20' : 'd6'} />
+                </View>
               </View>
             </View>
           )}
@@ -221,7 +238,7 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
                 </View>
                 <Text style={styles.calcMath}>x</Text>
                 <View style={styles.calcBox}>
-                  <Text style={styles.calcLbl}>Mult (d{selectedOpt.multiDice || 4})</Text>
+                  <Text style={styles.calcLbl}>Mult (d{selectedOpt.multiDice || 6})</Text>
                   <Text style={styles.calcVal}>{multiRoll}</Text>
                 </View>
               </View>
@@ -231,7 +248,9 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
                 <Text style={styles.finalPts}>+{baseRoll * multiRoll} Points</Text>
                 <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
                   <Text style={styles.finalXp}>+{Math.floor((baseRoll * multiRoll) / 2)} XP</Text>
-                  <Text style={[styles.finalXp, { color: '#8b5cf6' }]}>+{Math.max(1, Math.floor((baseRoll * multiRoll) / 10))} Tokens</Text>
+                  {earnedTokens > 0 && (
+                    <Text style={[styles.finalXp, { color: '#8b5cf6' }]}>+{earnedTokens} Token{earnedTokens > 1 ? 's' : ''}</Text>
+                  )}
                 </View>
               </View>
 

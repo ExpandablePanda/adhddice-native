@@ -6,7 +6,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useTasks } from '../lib/TasksContext';
+import { useTasks, getAppDayKey, getLocalDateKey } from '../lib/TasksContext';
+import { useSettings } from '../lib/SettingsContext';
 import { useEconomy } from '../lib/EconomyContext';
 import { useTheme } from '../lib/ThemeContext';
 import ScrollToTop from '../components/ScrollToTop';
@@ -68,6 +69,7 @@ function SectionHeader({ title, icon, color }) {
 export default function StatsScreen() {
   const { colors } = useTheme();
   const { taskHistory } = useTasks();
+  const { dayStartTime } = useSettings();
   const { economy, updateDailyRecord } = useEconomy();
   
   const { entries: focusEntries } = useFocus();
@@ -87,8 +89,7 @@ export default function StatsScreen() {
   // ── Aggregations ────────────────────────────────────────────────────────────
 
   const stats = useMemo(() => {
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const todayKey = getAppDayKey(dayStartTime);
     
     // Total Focus
     const totalFocusMinutes = focusEntries.reduce((acc, e) => acc + e.minutes, 0);
@@ -97,14 +98,27 @@ export default function StatsScreen() {
     const successHistory = taskHistory.filter(h => h.status === 'done' || h.status === 'did_my_best');
     const totalTasks = successHistory.length;
     
-    const tasksToday = successHistory.filter(h => new Date(h.timestamp).getTime() >= todayStart).length;
-    const tasksThisWeek = successHistory.filter(h => new Date(h.timestamp).getTime() >= todayStart - (7 * 86400000)).length;
-    const tasksThisMonth = successHistory.filter(h => new Date(h.timestamp).getTime() >= todayStart - (30 * 86400000)).length;
+    // Filter by "App Day"
+    // h.timestamp is ISO, but we should convert it to the App Day key it occurred on
+    const getEventDayKey = (ts) => {
+      const d = new Date(ts);
+      if (d.getHours() < dayStartTime) {
+        d.setDate(d.getDate() - 1);
+      }
+      return getLocalDateKey(d);
+    };
+
+    const tasksToday = successHistory.filter(h => getEventDayKey(h.timestamp) === todayKey).length;
+    
+    // For week/month, we'll use simple day diffs for now but based on todayKey
+    const nowTs = new Date().getTime();
+    const tasksThisWeek = successHistory.filter(h => (nowTs - new Date(h.timestamp).getTime()) < (7 * 86400000)).length;
+    const tasksThisMonth = successHistory.filter(h => (nowTs - new Date(h.timestamp).getTime()) < (30 * 86400000)).length;
 
     // Consistency (Active days)
     const activeDates = new Set([
-      ...focusEntries.map(e => new Date(e.date).toDateString()),
-      ...taskHistory.map(h => new Date(h.timestamp).toDateString())
+      ...focusEntries.map(e => e.date), // Focus entries usually use local date keys already
+      ...taskHistory.map(h => getEventDayKey(h.timestamp))
     ]);
     
     // Auto-update personal best
@@ -122,7 +136,7 @@ export default function StatsScreen() {
       activeDays: activeDates.size,
       dailyRecord: economy.dailyRecord || 0
     };
-  }, [focusEntries, taskHistory, economy.activeStreak, economy.dailyRecord, updateDailyRecord]);
+  }, [focusEntries, taskHistory, economy.activeStreak, economy.dailyRecord, updateDailyRecord, dayStartTime]);
 
   // Hourly Peak Chart Data
   const hourlyData = useMemo(() => {

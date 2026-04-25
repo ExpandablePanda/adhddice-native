@@ -20,6 +20,15 @@ const D20_ROTATIONS = {
   2:  new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.4, Math.PI, 1.2)),
 };
 
+const D6_ROTATIONS = {
+  1: new THREE.Quaternion().setFromEuler(new THREE.Euler(-1.571, 0.785, 0)),
+  2: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0.785, 0)),
+  3: new THREE.Quaternion().setFromEuler(new THREE.Euler(-2.356, 6.283, 1.571)),
+  4: new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.785, 0, -1.571)),
+  5: new THREE.Quaternion().setFromEuler(new THREE.Euler(-6.087, 3.927, 0)),
+  6: new THREE.Quaternion().setFromEuler(new THREE.Euler(1.571, 2.356, 0)),
+};
+
 class ModelErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -185,8 +194,68 @@ function D20Model({ rolling, result, color, manualRotation }) {
   });
 
   // RESTORE ORIGINAL SCALE: 0.015
-  // We now know 0.001 made it microscopic. 0.015 is the correct visual size.
   return <primitive ref={meshRef} object={clonedScene} scale={0.015} />;
+}
+
+function D6Model({ rolling, result, color, manualRotation }) {
+  const modelPath = require('../../assets/d6.glb');
+  const { scene } = useGLTF(modelPath);
+  const meshRef = useRef();
+  
+  const clonedScene = useMemo(() => {
+    if (!scene) return null;
+    const clone = scene.clone();
+    
+    clone.traverse((child) => {
+      if (child.isMesh) {
+        if (child.name.includes('001')) { // Dots
+          child.material = new THREE.MeshBasicMaterial({
+            color: new THREE.Color('#ffffff')
+          });
+        } else {
+          const baseColor = new THREE.Color(color || '#6d28d9');
+          child.material = new THREE.MeshPhysicalMaterial({
+            color: baseColor,
+            metalness: 0.1,
+            roughness: 0.2,
+            clearcoat: 1.0,         
+            clearcoatRoughness: 0.05,
+            emissive: new THREE.Color(color || '#6d28d9'),
+            emissiveIntensity: 0.05
+          });
+        }
+      }
+    });
+    return clone;
+  }, [scene]);
+
+  const targetQuaternion = useRef(new THREE.Quaternion());
+
+  useFrame((state, delta) => {
+    if (!meshRef.current) return;
+    
+    if (CALIBRATION_MODE && manualRotation) {
+      meshRef.current.rotation.x = manualRotation.x;
+      meshRef.current.rotation.y = manualRotation.y;
+      meshRef.current.rotation.z = manualRotation.z;
+      return;
+    }
+
+    if (rolling) {
+      const axis = new THREE.Vector3(1, 0.8, 0.4).normalize();
+      meshRef.current.rotateOnWorldAxis(axis, delta * 20);
+    } else if (result) {
+      const targetRoll = typeof result === 'object' ? (result.face || 1) : result;
+      const safeQuaternion = D6_ROTATIONS[targetRoll] || D6_ROTATIONS[1];
+      targetQuaternion.current.copy(safeQuaternion);
+      meshRef.current.quaternion.slerp(targetQuaternion.current, 0.15);
+    } else {
+      meshRef.current.rotation.y += delta * 0.8;
+      meshRef.current.rotation.x = Math.sin(state.clock.elapsedTime) * 0.2;
+    }
+  });
+
+  return <primitive ref={meshRef} object={clonedScene} scale={0.6} />;
 }
 
 function LoadingState({ color }) {
@@ -204,7 +273,7 @@ function LoadingState({ color }) {
   );
 }
 
-export default function Dice3D({ size, rolling, result, color }) {
+export default function Dice3D({ size, rolling, result, color, type = 'd20', manualRotation }) {
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' }}>
       <LoadingState color={color} />
@@ -218,11 +287,21 @@ export default function Dice3D({ size, rolling, result, color }) {
         
         <ModelErrorBoundary>
           <Suspense fallback={null}>
-            <D20Model 
-              rolling={rolling} 
-              result={result} 
-              color={color} 
-            />
+            {type === 'd6' ? (
+              <D6Model 
+                rolling={rolling} 
+                result={result} 
+                color={color} 
+                manualRotation={manualRotation}
+              />
+            ) : (
+              <D20Model 
+                rolling={rolling} 
+                result={result} 
+                color={color} 
+                manualRotation={manualRotation}
+              />
+            )}
           </Suspense>
         </ModelErrorBoundary>
       </Canvas>

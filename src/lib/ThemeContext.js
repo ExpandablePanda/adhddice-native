@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useProfile } from './ProfileContext';
+import { useSettings } from './SettingsContext';
 
 export const lightColors = {
   background: '#ffffff',
@@ -56,7 +57,12 @@ export function ThemeProvider({ children }) {
     AsyncStorage.setItem(`${storagePrefix}theme_preference`, nextDark ? 'dark' : 'light');
   };
 
-  const colors = isDark ? darkColors : lightColors;
+  const { highlightColor } = useSettings();
+  const baseColors = isDark ? darkColors : lightColors;
+  const colors = {
+    ...baseColors,
+    primary: highlightColor || baseColors.primary
+  };
 
   return (
     <ThemeContext.Provider value={{ isDark, toggleTheme, colors }}>

@@ -182,6 +182,7 @@ export async function restoreBackup(storagePrefix, backupId, user = null) {
       if (focus.goals) await AsyncStorage.setItem(`${storagePrefix}focus_goals`, JSON.stringify(focus.goals));
       if (focus.timerState) await AsyncStorage.setItem(`${storagePrefix}timer_state`, JSON.stringify(focus.timerState));
       if (focus.activeTimerKeys) await AsyncStorage.setItem(`${storagePrefix}active_timer_keys`, JSON.stringify(focus.activeTimerKeys));
+      await AsyncStorage.setItem(`${storagePrefix}focus_last_updated`, String(Date.now()));
       
       if (user) {
         await supabase.from('user_focus').upsert({ user_id: user.id, data: focus, updated_at: nowISO }, { onConflict: 'user_id' });

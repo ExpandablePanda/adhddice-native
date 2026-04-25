@@ -284,8 +284,8 @@ function RootApp() {
   }
 
   return (
-    <ThemeProvider>
-      <SettingsProvider>
+    <SettingsProvider>
+      <ThemeProvider>
         <EconomyProvider>
           <TasksProvider>
             <RoutinesProvider>
@@ -297,8 +297,8 @@ function RootApp() {
             </RoutinesProvider>
           </TasksProvider>
         </EconomyProvider>
-      </SettingsProvider>
-    </ThemeProvider>
+      </ThemeProvider>
+    </SettingsProvider>
   );
 }
 

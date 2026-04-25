@@ -9,6 +9,7 @@ export function SettingsProvider({ children }) {
   const { storagePrefix, user } = useProfile();
   const [dayStartTime, setDayStartTime] = useState(6); // Default 6 AM
   const [resetSubtasksOnParentReset, setResetSubtasksOnParentReset] = useState(true); // Default true
+  const [highlightColor, setHighlightColor] = useState(null); // Default uses theme primary
   const [loaded, setLoaded] = useState(false);
 
   // Load from local storage
@@ -23,6 +24,9 @@ export function SettingsProvider({ children }) {
           }
           if (parsed.resetSubtasksOnParentReset !== undefined) {
             setResetSubtasksOnParentReset(parsed.resetSubtasksOnParentReset);
+          }
+          if (parsed.highlightColor !== undefined) {
+            setHighlightColor(parsed.highlightColor);
           }
         }
       } catch (e) {
@@ -43,9 +47,10 @@ export function SettingsProvider({ children }) {
   }, [user, loaded]);
 
   const updateSettings = async (updates) => {
-    const newSettings = { dayStartTime, resetSubtasksOnParentReset, ...updates };
+    const newSettings = { dayStartTime, resetSubtasksOnParentReset, highlightColor, ...updates };
     if (updates.dayStartTime !== undefined) setDayStartTime(updates.dayStartTime);
     if (updates.resetSubtasksOnParentReset !== undefined) setResetSubtasksOnParentReset(updates.resetSubtasksOnParentReset);
+    if (updates.highlightColor !== undefined) setHighlightColor(updates.highlightColor);
 
     try {
       await AsyncStorage.setItem(`${storagePrefix}settings`, JSON.stringify(newSettings));
@@ -66,9 +71,10 @@ export function SettingsProvider({ children }) {
       const channel = new window.BroadcastChannel('adhddice_settings_sync');
       channel.onmessage = (event) => {
         if (event.data.type === 'SYNC_SETTINGS') {
-          const { dayStartTime: newTime, resetSubtasksOnParentReset: newReset } = event.data.payload;
+          const { dayStartTime: newTime, resetSubtasksOnParentReset: newReset, highlightColor: newColor } = event.data.payload;
           if (newTime !== undefined) setDayStartTime(newTime);
           if (newReset !== undefined) setResetSubtasksOnParentReset(newReset);
+          if (newColor !== undefined) setHighlightColor(newColor);
         }
       };
       return () => channel.close();
@@ -78,6 +84,8 @@ export function SettingsProvider({ children }) {
   return (
     <SettingsContext.Provider value={{
       dayStartTime,
+      resetSubtasksOnParentReset,
+      highlightColor,
       updateSettings
     }}>
       {children}

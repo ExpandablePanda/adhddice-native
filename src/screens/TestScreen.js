@@ -1,308 +1,206 @@
-import React, { Suspense, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import { Canvas, useFrame, useLoader } from '@react-three/fiber/native';
-import { useGLTF, PerspectiveCamera, Center, useTexture } from '@react-three/drei/native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, TextInput } from 'react-native';
 import { useTheme } from '../lib/ThemeContext';
-import { useTasks, STATUSES, calculateTaskStreak } from '../lib/TasksContext';
-import * as THREE from 'three';
+import Dice3D from '../components/Dice3D';
+import { Ionicons } from '@expo/vector-icons';
+import { useAudioPlayer } from 'expo-audio';
 
-function D6Model({ onReportNames }) {
-  const meshRef = useRef();
-  const { colors } = useTheme();
-  const { scene } = useGLTF(require('../../assets/d6.glb'));
-  
-  useEffect(() => {
-    if (!scene) return;
-    const names = [];
-    
-    scene.traverse((child) => {
-      if (child.isMesh) {
-        names.push(child.name);
-        if (child.material) {
-          const isDots = child.name.includes('001');
-          if (isDots) {
-            child.material = new THREE.MeshStandardMaterial({
-              color: new THREE.Color('#ffffff'),
-              metalness: 0.0,
-              roughness: 0.2, 
-              emissive: new THREE.Color('#ffffff'),
-              emissiveIntensity: 0.4 
-            });
-          } else {
-            child.material = new THREE.MeshPhysicalMaterial({
-              color: new THREE.Color('#4f46e5'), 
-              transparent: true,
-              opacity: 0.92, 
-              roughness: 0.7, 
-              metalness: 0.8, 
-              clearcoat: 1.0, 
-              clearcoatRoughness: 0.0, 
-              reflectivity: 0.5 
-            });
-          }
-          child.material.needsUpdate = true;
-        }
-      }
-    });
-    onReportNames(names);
-  }, [scene]);
+import { useTasks } from '../lib/TasksContext';
 
-  useFrame((state, delta) => {
-    if (meshRef.current) {
-      meshRef.current.rotation.y += delta * 1.0;
-      meshRef.current.rotation.x += delta * 0.4;
-    }
-  });
-
-  return <primitive ref={meshRef} object={scene} scale={0.5} />;
-}
-
-// Helper to generate a rounded rectangle shape for "Chips"
-function createRoundedRectShape(width, height, radius) {
-  const shape = new THREE.Shape();
-  const x = -width / 2;
-  const y = -height / 2;
-  shape.moveTo(x, y + radius);
-  shape.lineTo(x, y + height - radius);
-  shape.quadraticCurveTo(x, y + height, x + radius, y + height);
-  shape.lineTo(x + width - radius, y + height);
-  shape.quadraticCurveTo(x + width, y + height, x + width, y + height - radius);
-  shape.lineTo(x + width, y + radius);
-  shape.quadraticCurveTo(x + width, y, x + width - radius, y);
-  shape.lineTo(x + radius, y);
-  shape.quadraticCurveTo(x, y, x, y + radius);
-  return shape;
-}
-
-function Chip({ position, width, height, color, maskTexture }) {
-  const radius = height / 2.2; // Approximate "Pill" look
-  const shape = React.useMemo(() => createRoundedRectShape(width, height, radius), [width, height, radius]);
-
-  return (
-    <group position={position}>
-      {/* 1. The Pill Background (Rounded Geometry) */}
-      <mesh>
-        <shapeGeometry args={[shape]} />
-        <meshBasicMaterial color={color} />
-      </mesh>
-      {/* 2. The Text Overlay (Alpha Masked) */}
-      <mesh position={[0, 0, 0.01]}>
-        <planeGeometry args={[width, height]} />
-        <meshBasicMaterial color="#000000" alphaMap={maskTexture} transparent={true} alphaTest={0.5} />
-      </mesh>
-    </group>
-  );
-}
-
-
-function CardsModel({ onReportNames, testTask }) {
-  const groupRef = useRef();
-  const { scene } = useGLTF(require('../../assets/playing_cards.glb'));
-
-  // ── Real task data ────────────────────────────────────────────────────────
-  const taskTitle   = testTask?.title         || 'Take out trash';
-  const taskId      = testTask?.id            || '20304540';
-  const status      = testTask?.status        || 'active';
-  const energy      = testTask?.energy        || 5;
-  const tags        = testTask?.tags          || ['Home', 'Rapid'];
-  const dueDate     = testTask?.dueDate       || null;
-  const statusHistory = testTask?.statusHistory || {};
-
-  const statusInfo  = STATUSES[status] || STATUSES.active;
-  const statusLabel = statusInfo.label;
-
-  // Streak calculation
-  const streak = calculateTaskStreak(statusHistory);
-
-  // Due date label
-  const dueDateLabel = dueDate
-    ? `DUE ${dueDate.replace(/(\d{4})-(\d{2})-(\d{2})/, '$2/$3')}`
-    : 'NO DUE DATE';
-
-  // ── Logo texture (back) ───────────────────────────────────────────────────
-  const iconTexture = useTexture(require('../../assets/logo.png'));
-
-  // ── Alpha mask URL generator ──────────────────────────────────────────────
-  const maskUrl = (text, w, h) =>
-    `https://placehold.co/${w}x${h}/000000/FFFFFF.png?text=${encodeURIComponent(text)}&font=montserrat`;
-
-  // ── Load all mask textures at top level (no hooks in loops) ───────────────
-  const idMaskTexture     = useLoader(THREE.TextureLoader, maskUrl(`ID: ${taskId}`, 400, 100));
-  const statusMaskTexture = useLoader(THREE.TextureLoader, maskUrl(statusLabel.toUpperCase(), 400, 100));
-  const energyMaskTexture = useLoader(THREE.TextureLoader, maskUrl(`ENERGY  ${energy}`, 300, 100));
-  const titleMaskTexture  = useLoader(THREE.TextureLoader, maskUrl(taskTitle, 800, 300));
-  const dueMaskTexture    = useLoader(THREE.TextureLoader, maskUrl(dueDateLabel, 500, 100));
-  const streakMaskTexture  = useLoader(THREE.TextureLoader, maskUrl(streak > 0 ? `STREAK  ${streak}` : 'NO STREAK', 400, 100));
-  const historyMaskTexture = useLoader(THREE.TextureLoader, maskUrl('HISTORY', 300, 100));
-
-  // Tag textures — useLoader supports an array of URLs
-  const tagUrls = tags.map(t => maskUrl(t.toUpperCase(), 300, 100));
-  const tagMaskTextures = useLoader(THREE.TextureLoader, tagUrls);
-
-  // ── Prep all textures ─────────────────────────────────────────────────────
-  React.useMemo(() => {
-    const all = [iconTexture, idMaskTexture, statusMaskTexture, energyMaskTexture,
-                 titleMaskTexture, dueMaskTexture, streakMaskTexture, historyMaskTexture, ...tagMaskTextures];
-    all.forEach(tex => {
-      if (tex) { tex.premultiplyAlpha = false; tex.generateMipmaps = false; tex.needsUpdate = true; }
-    });
-  }, [iconTexture, idMaskTexture, statusMaskTexture, energyMaskTexture,
-      titleMaskTexture, dueMaskTexture, streakMaskTexture, historyMaskTexture, tagMaskTextures]);
-
-  // ── Clone card meshes ─────────────────────────────────────────────────────
-  const { frontCard, backCard } = React.useMemo(() => {
-    if (!scene) return { frontCard: null, backCard: null };
-    let front = null, back = null;
-    const names = [];
-    scene.traverse((child) => {
-      if (child.isMesh) {
-        names.push(child.name);
-        if (child.name === 'base_card1_Guzma_0')    front = child.clone();
-        else if (child.name === 'base_card2_Lusamine_0') back = child.clone();
-      }
-    });
-    if (onReportNames) onReportNames(names);
-    if (front) front.material = new THREE.MeshBasicMaterial({ color: '#4f46e5' });
-    if (back)  back.material  = new THREE.MeshBasicMaterial({ color: '#ffffff' });
-    return { frontCard: front, backCard: back };
-  }, [scene, onReportNames]);
-
-  if (!frontCard || !backCard) return null;
-
-  // ── Layout helpers ────────────────────────────────────────────────────────
-  const chipW = (text, pad = 0.2) => text.length * 0.045 + pad;
-
-  const statusW = chipW(statusLabel);
-  const dueW    = chipW(dueDateLabel, 0.25);
-  const streakW = chipW(streak > 0 ? `STREAK  ${streak}` : 'NO STREAK', 0.25);
-
-  // Centered tag row layout
-  const tagsData = tags.map((t, i) => ({ text: t, width: chipW(t), mask: tagMaskTextures[i] }));
-  const tagRowW  = tagsData.reduce((a, t) => a + t.width + 0.08, 0) - 0.08;
-
-  return (
-    <Center>
-      <group ref={groupRef}>
-
-        {/* ── Floating ID tag above card ─────────────────────────────────── */}
-        <group position={[0, 1.25, 0.05]}>
-          <mesh>
-            <planeGeometry args={[1.0, 0.25]} />
-            <meshBasicMaterial color="#ffffff" alphaMap={idMaskTexture} transparent alphaTest={0.5} />
-          </mesh>
-        </group>
-
-        {/* ── FRONT CARD (Guzma - Indigo) ───────────────────────────────── */}
-        <group position={[0, 0, 0.005]}>
-          <primitive object={frontCard} scale={1.4} />
-
-          {/* ROW 1: Status (left) | Energy (right) */}
-          <Chip position={[-0.72 + statusW / 2, 0.82, 0.12]} width={statusW} height={0.2} color="#ffffff" maskTexture={statusMaskTexture} />
-          <Chip position={[0.55, 0.82, 0.12]} width={0.48} height={0.2} color="#ffffff" maskTexture={energyMaskTexture} />
-
-          {/* ROW 2: Due date (left) | Streak (right) */}
-          <Chip position={[-0.72 + dueW / 2, 0.54, 0.12]} width={dueW} height={0.2} color="#ffffff" maskTexture={dueMaskTexture} />
-          <Chip position={[0.72 - streakW / 2, 0.54, 0.12]} width={streakW} height={0.2} color="#ffffff" maskTexture={streakMaskTexture} />
-
-          {/* CENTER: Task title */}
-          <mesh position={[0, 0.08, 0.12]}>
-            <planeGeometry args={[1.6, 0.55]} />
-            <meshBasicMaterial color="#ffffff" alphaMap={titleMaskTexture} transparent alphaTest={0.5} />
-          </mesh>
-
-          {/* HISTORY chip — tappable, opens history menu */}
-          <Chip position={[0, -0.38, 0.12]} width={0.58} height={0.2} color="#ffffff" maskTexture={historyMaskTexture} />
-
-          {/* FOOTER: Tag chips row */}
-          <group position={[0, -0.65, 0.12]}>
-            {tagsData.map((tag, i) => {
-              let xOffset = -tagRowW / 2;
-              for (let j = 0; j < i; j++) xOffset += tagsData[j].width + 0.08;
-              return (
-                <Chip
-                  key={i}
-                  position={[xOffset + tag.width / 2, 0, 0]}
-                  width={tag.width}
-                  height={0.2}
-                  color="#ffffff"
-                  maskTexture={tag.mask}
-                />
-              );
-            })}
-          </group>
-        </group>
-
-        {/* ── BACK CARD (Lusamine - White) ──────────────────────────────── */}
-        <group position={[0, 0, -0.005]} rotation={[0, Math.PI, 0]}>
-          <primitive object={backCard} scale={1.4} />
-          <mesh position={[0, 0, 0.05]}>
-            <planeGeometry args={[1.4, 0.7]} />
-            <meshBasicMaterial map={iconTexture} transparent alphaTest={0.1} />
-          </mesh>
-        </group>
-
-      </group>
-    </Center>
-  );
-}
 export default function TestScreen() {
   const { colors } = useTheme();
-  const { tasks } = useTasks();
-  const [meshNames, setMeshNames] = React.useState([]);
-  const [cardMeshNames, setCardMeshNames] = React.useState([]);
+  const { gamesPlayCredits, setGamesPlayCredits } = useTasks();
   
-  const sampleTask = tasks && tasks.length > 0 ? tasks[0] : null;
+  // Calibration State
+  const [targetFace, setTargetFace] = useState(1);
+  const [rot, setRot] = useState({ x: -1.571, y: 0.785, z: 0 });
+  
+  // Results mapping storage (Updated with your values)
+  const [mappings, setMappings] = useState({
+    1: { x: -1.571, y: 0.785, z: 0 },
+    2: { x: 0, y: 0.785, z: 0 },
+    3: { x: -2.356, y: 6.283, z: 1.571 },
+    4: { x: -0.785, y: 0, z: -1.571 },
+    5: { x: -6.087, y: 3.927, z: 0 },
+    6: { x: 1.571, y: 2.356, z: 0 },
+  });
+
+  // Normal Roll Test State
+  const [isRolling, setIsRolling] = useState(false);
+  const [rollResult, setRollResult] = useState(1);
+  const [testMode, setTestMode] = useState('calibrate'); // 'calibrate' or 'roll'
+
+  const rollPlayer = useAudioPlayer(require('../../assets/dice-roll.wav'));
+
+  function playRollSound() {
+    try {
+      rollPlayer.seekTo(0);
+      rollPlayer.play();
+    } catch (e) {}
+  }
+
+  const step = Math.PI / 16; 
+
+  const adjust = (axis, delta) => {
+    setRot(prev => ({ ...prev, [axis]: prev[axis] + delta }));
+  };
+
+  const saveCurrent = () => {
+    const nextMappings = { ...mappings, [targetFace]: { ...rot } };
+    setMappings(nextMappings);
+    console.log("--- D6 MAPPING UPDATE ---");
+    console.log(JSON.stringify(nextMappings, null, 2));
+    console.log("-------------------------");
+    Alert.alert("Saved", `Face ${targetFace} rotation updated.`);
+  };
+
+  const selectFace = (face) => {
+    setTargetFace(face);
+    setRot(mappings[face] || { x: 0, y: 0, z: 0 });
+  };
+
+  const runTestRoll = () => {
+    setIsRolling(true);
+    setRollResult(null);
+    playRollSound();
+    setTimeout(() => {
+      const res = Math.floor(Math.random() * 6) + 1;
+      setRollResult(res);
+      setIsRolling(false);
+    }, 1500);
+  };
+
+  const formatCode = () => {
+    let str = "const D6_ROTATIONS = {\n";
+    for (let i = 1; i <= 6; i++) {
+      const { x, y, z } = mappings[i];
+      str += `  ${i}: new THREE.Quaternion().setFromEuler(new THREE.Euler(${x.toFixed(3)}, ${y.toFixed(3)}, ${z.toFixed(3)})),\n`;
+    }
+    str += "};";
+    return str;
+  };
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={styles.container}>
-      <Text style={[styles.title, { color: colors.textPrimary }]}>D6 Model Test</Text>
+      <Text style={[styles.title, { color: colors.textPrimary }]}>D6 Test & Calibration</Text>
       
+      <View style={styles.modeToggle}>
+        <TouchableOpacity 
+          onPress={() => setTestMode('calibrate')}
+          style={[styles.modeBtn, testMode === 'calibrate' && { backgroundColor: colors.primary }]}
+        >
+          <Text style={[styles.modeText, testMode === 'calibrate' && { color: '#fff' }]}>Calibration</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          onPress={() => setTestMode('roll')}
+          style={[styles.modeBtn, testMode === 'roll' && { backgroundColor: colors.primary }]}
+        >
+          <Text style={[styles.modeText, testMode === 'roll' && { color: '#fff' }]}>Roll Test</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.canvasContainer}>
-        <Canvas style={{ flex: 1 }} alpha legacy samples={0}>
-          <PerspectiveCamera makeDefault position={[0, 0, 5]} fov={40} />
-          <ambientLight intensity={1.5} />
-          <directionalLight position={[5, 10, 5]} intensity={1} />
-          <pointLight position={[-5, 5, 5]} intensity={1.5} />
+        <Dice3D 
+          size={300} 
+          type="d6" 
+          rolling={testMode === 'roll' ? isRolling : false} 
+          result={testMode === 'roll' ? rollResult : null}
+          manualRotation={testMode === 'calibrate' ? rot : null} 
+          color={colors.primary}
+        />
+        {testMode === 'roll' && rollResult && !isRolling && (
+           <View style={styles.resultBadge}>
+             <Text style={styles.resultText}>ROLLED: {rollResult}</Text>
+           </View>
+        )}
+      </View>
+
+      {testMode === 'calibrate' ? (
+        <>
+          <View style={styles.faceRow}>
+            {[1, 2, 3, 4, 5, 6].map(f => (
+              <TouchableOpacity 
+                key={f} 
+                onPress={() => selectFace(f)}
+                style={[styles.faceBtn, targetFace === f && { backgroundColor: colors.primary }]}
+              >
+                <Text style={[styles.faceText, targetFace === f && { color: '#fff' }]}>{f}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={styles.controlsGrid}>
+            <View style={styles.controlGroup}>
+              <Text style={styles.controlLabel}>X Axis (Pitch)</Text>
+              <View style={styles.btnRow}>
+                <TouchableOpacity style={styles.actionBtn} onPress={() => adjust('x', -step)}><Ionicons name="remove" size={24} color="#fff" /></TouchableOpacity>
+                <Text style={styles.valText}>{rot.x.toFixed(2)}</Text>
+                <TouchableOpacity style={styles.actionBtn} onPress={() => adjust('x', step)}><Ionicons name="add" size={24} color="#fff" /></TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.controlGroup}>
+              <Text style={styles.controlLabel}>Y Axis (Yaw)</Text>
+              <View style={styles.btnRow}>
+                <TouchableOpacity style={styles.actionBtn} onPress={() => adjust('y', -step)}><Ionicons name="remove" size={24} color="#fff" /></TouchableOpacity>
+                <Text style={styles.valText}>{rot.y.toFixed(2)}</Text>
+                <TouchableOpacity style={styles.actionBtn} onPress={() => adjust('y', step)}><Ionicons name="add" size={24} color="#fff" /></TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.controlGroup}>
+              <Text style={styles.controlLabel}>Z Axis (Roll)</Text>
+              <View style={styles.btnRow}>
+                <TouchableOpacity style={styles.actionBtn} onPress={() => adjust('z', -step)}><Ionicons name="remove" size={24} color="#fff" /></TouchableOpacity>
+                <Text style={styles.valText}>{rot.z.toFixed(2)}</Text>
+                <TouchableOpacity style={styles.actionBtn} onPress={() => adjust('z', step)}><Ionicons name="add" size={24} color="#fff" /></TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
+          <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={saveCurrent}>
+            <Text style={styles.saveText}>Save Face {targetFace} Mapping</Text>
+          </TouchableOpacity>
+
+          <View style={styles.codeOutput}>
+            <Text style={styles.codeTitle}>Resulting Code (Select & Copy):</Text>
+            <TextInput
+              style={styles.codeText}
+              multiline
+              editable={false}
+              value={formatCode()}
+              selectTextOnFocus
+            />
+          </View>
+        </>
+      ) : (
+        <View style={{ width: '100%', alignItems: 'center' }}>
+          <TouchableOpacity 
+            style={[styles.rollBtn, { backgroundColor: colors.primary }]} 
+            onPress={runTestRoll}
+            disabled={isRolling}
+          >
+            <Text style={styles.rollBtnText}>{isRolling ? 'ROLLING...' : 'TEST ROLL'}</Text>
+          </TouchableOpacity>
           
-          <Suspense fallback={null}>
-            <D6Model onReportNames={setMeshNames} />
-          </Suspense>
-        </Canvas>
-      </View>
+          <Text style={[styles.note, { color: colors.textSecondary, marginTop: 30, textAlign: 'center' }]}>
+            Verify that the number shown in the badge above matches the face visible on the 3D model.
+          </Text>
+        </View>
+      )}
 
-      <View style={{ padding: 10, backgroundColor: '#eee', borderRadius: 10, width: '90%' }}>
-        <Text style={{ fontWeight: 'bold', marginBottom: 5 }}>Found Meshes:</Text>
-        {meshNames.map((n, i) => (
-          <Text key={i} style={{ fontSize: 12 }}>• {n || '(unnamed)'}</Text>
-        ))}
-        {meshNames.length === 0 && <Text style={{ fontSize: 12 }}>Scanning...</Text>}
-      </View>
-      
-      <Text style={[styles.subtitle, { color: colors.textSecondary, marginTop: 15 }]}>
-        Sanity Test: If the list above shows names like 'Sphere' or 'Mesh', let me know!
-      </Text>
-
-      <Text style={[styles.title, { color: colors.textPrimary, marginTop: 50 }]}>Playing Cards Test</Text>
-      
-      <View style={[styles.canvasContainer, { backgroundColor: '#d1d5db' }]}>
-        <Canvas style={{ flex: 1 }} alpha legacy samples={0}>
-          <PerspectiveCamera makeDefault position={[0, 0, 5]} fov={40} />
-          <ambientLight intensity={1.5} />
-          <directionalLight position={[5, 10, 5]} intensity={1} />
-          <pointLight position={[-5, 5, 5]} intensity={1.5} />
-          
-          <Suspense fallback={null}>
-            <CardsModel onReportNames={setCardMeshNames} testTask={sampleTask} />
-          </Suspense>
-        </Canvas>
-      </View>
-
-      <View style={{ padding: 10, backgroundColor: '#eee', borderRadius: 10, width: '90%' }}>
-        <Text style={{ fontWeight: 'bold', marginBottom: 5 }}>Card Meshes Found:</Text>
-        {cardMeshNames.map((n, i) => (
-          <Text key={i} style={{ fontSize: 12 }}>• {n || '(unnamed)'}</Text>
-        ))}
-        {cardMeshNames.length === 0 && <Text style={{ fontSize: 12 }}>Scanning...</Text>}
+      {/* Games Hub Debug Section */}
+      <View style={{ width: '100%', padding: 20, marginTop: 40, backgroundColor: '#fef3c7', borderRadius: 20, borderWidth: 1, borderColor: '#fde68a' }}>
+        <Text style={{ fontSize: 18, fontWeight: '800', color: '#92400e', marginBottom: 4 }}>Games Hub Debug</Text>
+        <Text style={{ fontSize: 14, color: '#b45309', marginBottom: 16 }}>
+          Current: {Math.floor((gamesPlayCredits || 0)/60)}m {(gamesPlayCredits || 0)%60}s
+        </Text>
+        <TouchableOpacity 
+          style={{ backgroundColor: '#f59e0b', padding: 16, borderRadius: 12, alignItems: 'center' }}
+          onPress={() => setGamesPlayCredits(prev => (prev || 0) + 1800)}
+        >
+          <Text style={{ color: '#fff', fontWeight: '800' }}>Add 30m Playtime (Manual)</Text>
+        </TouchableOpacity>
       </View>
 
     </ScrollView>
@@ -313,23 +211,155 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     paddingVertical: 40,
-  },
-  canvasContainer: {
-    width: 300,
-    height: 300,
-    backgroundColor: 'transparent',
-    marginVertical: 30,
-    borderRadius: 20,
-    overflow: 'hidden',
+    paddingBottom: 100,
   },
   title: {
     fontSize: 24,
     fontWeight: '800',
     marginBottom: 8,
   },
-  subtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    paddingHorizontal: 20,
+  modeToggle: {
+    flexDirection: 'row',
+    backgroundColor: '#e5e7eb',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 20,
   },
+  modeBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  modeText: {
+    fontWeight: '700',
+    fontSize: 14,
+    color: '#4b5563',
+  },
+  canvasContainer: {
+    width: 300,
+    height: 300,
+    backgroundColor: '#1f2937',
+    borderRadius: 20,
+    marginBottom: 30,
+    position: 'relative',
+  },
+  resultBadge: {
+    position: 'absolute',
+    bottom: -15,
+    backgroundColor: '#fff',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 3,
+    borderColor: '#4f46e5',
+    alignSelf: 'center',
+  },
+  resultText: {
+    fontWeight: '900',
+    fontSize: 18,
+    color: '#1f2937',
+  },
+  faceRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 30,
+  },
+  faceBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#e5e7eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  faceText: {
+    fontWeight: '700',
+    fontSize: 18,
+  },
+  controlsGrid: {
+    width: '100%',
+    paddingHorizontal: 20,
+    gap: 20,
+    marginBottom: 40,
+  },
+  controlGroup: {
+    backgroundColor: '#f3f4f6',
+    padding: 15,
+    borderRadius: 16,
+  },
+  controlLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 10,
+  },
+  btnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  actionBtn: {
+    width: 50,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#4b5563',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  valText: {
+    fontSize: 20,
+    fontWeight: '800',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    color: '#111827',
+    width: 80,
+    textAlign: 'center',
+  },
+  saveBtn: {
+    paddingHorizontal: 30,
+    paddingVertical: 15,
+    borderRadius: 15,
+    marginBottom: 30,
+  },
+  saveText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  rollBtn: {
+    width: '80%',
+    paddingVertical: 18,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 5,
+  },
+  rollBtnText: {
+    color: '#fff',
+    fontWeight: '900',
+    fontSize: 20,
+    letterSpacing: 1,
+  },
+  codeOutput: {
+    width: '90%',
+    backgroundColor: '#111827',
+    padding: 20,
+    borderRadius: 15,
+    marginBottom: 30,
+  },
+  codeTitle: {
+    color: '#9ca3af',
+    fontSize: 12,
+    marginBottom: 10,
+    fontWeight: 'bold',
+  },
+  codeText: {
+    color: '#10b981',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontSize: 10,
+  },
+  note: {
+    fontSize: 12,
+    lineHeight: 18,
+    width: '80%',
+  }
 });

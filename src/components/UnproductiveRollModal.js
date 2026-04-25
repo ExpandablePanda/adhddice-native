@@ -41,8 +41,8 @@ export default function UnproductiveRollModal({ visible, rolls, onClose, onFinis
       setMultiplier(1);
       
       // Auto-decide multiplier
-      const r = Math.floor(Math.random() * 4) + 1;
-      const mults = [1, 0.75, 0.5, 0.25];
+      const r = Math.floor(Math.random() * 6) + 1;
+      const mults = [1, 0.8, 0.6, 0.4, 0.2, 0.1];
       setMultiplier(mults[r - 1]);
       
       // Start rolling after a short delay
@@ -114,7 +114,7 @@ export default function UnproductiveRollModal({ visible, rolls, onClose, onFinis
   function handleRollMultiplier() {
     setStep('rolling_mult');
     playRollSound();
-    // D4 roll animation for 2 seconds
+    // D6 roll animation for 1 second
     setTimeout(() => {
       setStep('results');
     }, 1000);
@@ -207,7 +207,7 @@ export default function UnproductiveRollModal({ visible, rolls, onClose, onFinis
               </Text>
               <TouchableOpacity style={[styles.beginBtn, { backgroundColor: '#111827' }]} onPress={handleRollMultiplier}>
                 <Ionicons name="shield-checkmark" size={20} color="#fff" style={{marginRight: 8}}/>
-                <Text style={styles.beginBtnText}>Roll Mitigation (D4)</Text>
+                <Text style={styles.beginBtnText}>Roll Mitigation (D6)</Text>
               </TouchableOpacity>
             </>
           )}
@@ -220,8 +220,8 @@ export default function UnproductiveRollModal({ visible, rolls, onClose, onFinis
                 <Text style={styles.sumVal}>{sum}</Text>
               </View>
               <View style={{ alignItems: 'center', marginVertical: 40 }}>
-                <Text style={[styles.sumLabel, { color: '#ef4444' }]}>ROLLING D4</Text>
-                <AnimatedRollingDice size={100} color="#ef4444" />
+                <Text style={[styles.sumLabel, { color: '#ef4444' }]}>ROLLING D6</Text>
+                <Dice3D size={140} rolling={true} color="#ef4444" type="d6" />
               </View>
             </>
           )}
@@ -246,7 +246,7 @@ export default function UnproductiveRollModal({ visible, rolls, onClose, onFinis
               <View style={[styles.multArea, { backgroundColor: '#fff1f2' }]}>
                 <Ionicons name="remove-circle-outline" size={24} color="#ef4444" />
                 <Text style={[styles.multText, { color: '#ef4444' }]}>
-                  D4 Mitigation: {multiplier}x factor
+                  D6 Mitigation: {multiplier}x factor
                 </Text>
               </View>
 
@@ -274,33 +274,6 @@ export default function UnproductiveRollModal({ visible, rolls, onClose, onFinis
   );
 }
 
-function AnimatedRollingDice({ size, color }) {
-  const rotateAnim = useRef(new Animated.Value(0)).current;
-  
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(rotateAnim, {
-          toValue: 1,
-          duration: 400,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-  }, [rotateAnim]);
-
-  const spin = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-
-  return (
-    <Animated.View style={{ transform: [{ rotate: spin }] }}>
-      <Ionicons name="dice" size={size} color={color} />
-    </Animated.View>
-  );
-}
 
 const styles = StyleSheet.create({
   header: {

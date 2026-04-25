@@ -118,19 +118,22 @@ export function calculateTaskStreak(history = {}, dayStartTime = 6, isRecurring 
   }
   return streak;
 }
-export function calculateBestStreak(history = {}) {
+export function calculateBestStreak(history = {}, dayStartTime = 6) {
   let best = 0, current = 0;
-  const keys = Object.keys(history).filter(k => history[k] === 'done' || history[k] === 'did_my_best' || history[k] === 'missed').sort();
+  const keys = Object.keys(history).filter(k => history[k] === 'done' || history[k] === 'did_my_best').sort();
   if (keys.length === 0) return 0;
 
-  const first = new Date(keys[0] + 'T12:00:00');
-  const last = new Date(); 
-  const diff = Math.round((last - first) / 86400000);
+  // We need to iterate from the first activity to "today" (App Day)
+  const firstDateKey = keys[0];
+  const todayKey = getAppDayKey(dayStartTime);
+  
+  // Simple approach: find all sequences of consecutive days
+  // We'll use a date object to iterate
+  let currentPos = new Date(firstDateKey + 'T12:00:00');
+  const endPos = new Date(todayKey + 'T12:00:00');
 
-  for (let i = 0; i <= diff; i++) {
-    const d = new Date(first);
-    d.setDate(d.getDate() + i);
-    const key = getLocalDateKey(d);
+  while (currentPos <= endPos) {
+    const key = getLocalDateKey(currentPos);
     const s = history[key];
     if (s === 'done' || s === 'did_my_best') {
       current++;
@@ -138,7 +141,9 @@ export function calculateBestStreak(history = {}) {
     } else {
       current = 0;
     }
+    currentPos.setDate(currentPos.getDate() + 1);
   }
+  
   return best;
 }
 
@@ -203,7 +208,8 @@ export function TasksProvider({ children }) {
 
   // Break Timer State
   const [breakTimer, setBreakTimer] = useState(null); // { remainingSeconds: number, totalSeconds: number }
-  const [gamesUnlockEndTime, setGamesUnlockEndTime] = useState(0);
+  // Games Hub Lock State
+  const [gamesPlayCredits, setGamesPlayCredits] = useState(0); // seconds remaining
   
   // Track the timestamp of the last local change and the last saved state hash
   const lastLocalChangeRef = useRef(0);
@@ -223,7 +229,7 @@ export function TasksProvider({ children }) {
           setTasks(event.data.tasks);
           if (event.data.history) setTaskHistory(event.data.history);
           if (event.data.breakTimer !== undefined) setBreakTimer(event.data.breakTimer);
-          if (event.data.gamesUnlockEndTime !== undefined) setGamesUnlockEndTime(event.data.gamesUnlockEndTime);
+          if (event.data.gamesPlayCredits !== undefined) setGamesPlayCredits(event.data.gamesPlayCredits);
         }
       };
     }
@@ -245,7 +251,7 @@ export function TasksProvider({ children }) {
         const storedTasks = await AsyncStorage.getItem(`${storagePrefix}tasks`);
         const storedHistory = await AsyncStorage.getItem(`${storagePrefix}task_history`);
         const storedBreak = await AsyncStorage.getItem(`${storagePrefix}break_timer`);
-        const storedUnlock = await AsyncStorage.getItem(`${storagePrefix}games_unlock_end_time`);
+        const storedUnlock = await AsyncStorage.getItem(`${storagePrefix}games_play_credits`);
         
         if (storedTasks) {
           const parsed = JSON.parse(storedTasks);
@@ -271,7 +277,25 @@ export function TasksProvider({ children }) {
           } catch (e) {}
         }
         if (storedUnlock) {
-          setGamesUnlockEndTime(parseInt(storedUnlock));
+          setGamesPlayCredits(parseInt(storedUnlock) || 0);
+        } else {
+          // New: Account for tasks already done today if credits not set
+          const todayKey = getAppDayKey(dayStartTime);
+          const tasksDoneToday = initialHistory.filter(h => {
+             const ts = new Date(h.timestamp);
+             // Use same logic as getAppDayKey to see if it belongs to today
+             if (ts.getHours() < dayStartTime) ts.setDate(ts.getDate() - 1);
+             const hKey = getLocalDateKey(ts);
+             return hKey === todayKey && (h.status === 'done' || h.status === 'did_my_best');
+          });
+          
+          // Cross-reference with energy levels of current tasks
+          let earned = 0;
+          tasksDoneToday.forEach(h => {
+            const task = initialTasks.find(t => String(t.id) === String(h.taskId));
+            if (task && task.energy === 'low') earned += 1800;
+          });
+          if (earned > 0) setGamesPlayCredits(earned);
         }
       } catch (e) {
         console.error('Failed to load local tasks', e);
@@ -314,8 +338,8 @@ export function TasksProvider({ children }) {
                   setBreakTimer(null);
                 }
 
-                if (cloud.gamesUnlockEndTime !== undefined) {
-                  setGamesUnlockEndTime(cloud.gamesUnlockEndTime);
+                if (cloud.gamesPlayCredits !== undefined) {
+                  setGamesPlayCredits(cloud.gamesPlayCredits);
                 }
               }
             } else if (localTs > cloudTs + 2000) {
@@ -361,8 +385,8 @@ export function TasksProvider({ children }) {
               } else {
                 setBreakTimer(null);
               }
-              if (payload.new.data.gamesUnlockEndTime !== undefined) {
-                setGamesUnlockEndTime(payload.new.data.gamesUnlockEndTime);
+              if (payload.new.data.gamesPlayCredits !== undefined) {
+                setGamesPlayCredits(payload.new.data.gamesPlayCredits);
               }
             }
           }
@@ -374,15 +398,15 @@ export function TasksProvider({ children }) {
   }, [user]);
 
   // Track state in refs
-  const stateRef = useRef({ tasks, taskHistory, breakTimer, gamesUnlockEndTime });
+  const stateRef = useRef({ tasks, taskHistory, breakTimer, gamesPlayCredits });
 
   useEffect(() => {
-    stateRef.current = { tasks, taskHistory, breakTimer, gamesUnlockEndTime };
-  }, [tasks, taskHistory, breakTimer, gamesUnlockEndTime]);
+    stateRef.current = { tasks, taskHistory, breakTimer, gamesPlayCredits };
+  }, [tasks, taskHistory, breakTimer, gamesPlayCredits]);
 
   const saveTasksData = useCallback(async () => {
     if (!loaded) return;
-    const { tasks: t, taskHistory: th, breakTimer: bt, gamesUnlockEndTime: guet } = stateRef.current;
+    const { tasks: t, taskHistory: th, breakTimer: bt, gamesPlayCredits: gpc } = stateRef.current;
     
     const timerToSave = bt ? { ...bt, lastUpdated: Date.now() } : null;
 
@@ -392,7 +416,7 @@ export function TasksProvider({ children }) {
         tasks: t,
         history: th,
         breakTimer: timerToSave,
-        gamesUnlockEndTime: guet,
+        gamesPlayCredits: gpc,
         storagePrefix
       });
     }
@@ -400,7 +424,7 @@ export function TasksProvider({ children }) {
     const now = Date.now();
     await AsyncStorage.setItem(`${storagePrefix}tasks`, JSON.stringify(t));
     await AsyncStorage.setItem(`${storagePrefix}task_history`, JSON.stringify(th));
-    await AsyncStorage.setItem(`${storagePrefix}games_unlock_end_time`, String(guet));
+    await AsyncStorage.setItem(`${storagePrefix}games_play_credits`, String(gpc));
     await AsyncStorage.setItem(`${storagePrefix}tasks_last_updated`, String(now));
     if (timerToSave) {
       await AsyncStorage.setItem(`${storagePrefix}break_timer`, JSON.stringify(timerToSave));
@@ -415,7 +439,7 @@ export function TasksProvider({ children }) {
           .from('user_tasks')
           .upsert({
             user_id: user.id,
-            data: { tasks: t, history: th, breakTimer: timerToSave, gamesUnlockEndTime: guet },
+            data: { tasks: t, history: th, breakTimer: timerToSave, gamesPlayCredits: gpc },
             updated_at: new Date().toISOString()
           }, { onConflict: 'user_id' });
         if (error) throw error;
@@ -471,7 +495,7 @@ export function TasksProvider({ children }) {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       }
     };
-  }, [tasks, taskHistory, breakTimer, gamesUnlockEndTime, loaded, user, storagePrefix, triggerTasksSync, saveTasksData]);
+  }, [tasks, taskHistory, breakTimer, gamesPlayCredits, loaded, user, storagePrefix, triggerTasksSync, saveTasksData]);
 
   // 3. Day-Start Transition Logic
   useEffect(() => {
@@ -497,7 +521,9 @@ export function TasksProvider({ children }) {
           const wasDaily = lowFreq === 'daily';
           const normalizedDue = normalizeDateKey(t.dueDate);
           const wasWeeklyToday = lowFreq === 'weekly' && (t.weeklyMode === 'fixed_day' || !t.weeklyMode) && t.weeklyDay === yesterday.getDay();
-          const wasDueYesterday = normalizedDue && normalizedDue <= yesterdayKey;
+          const wasDueYesterday = isRecurring 
+            ? (normalizedDue && normalizedDue <= yesterdayKey)
+            : (normalizedDue === yesterdayKey);
 
           if (wasDaily || wasWeeklyToday || wasDueYesterday) {
              const updatedHist = { ...hist, [yesterdayKey]: 'missed' };
@@ -508,8 +534,8 @@ export function TasksProvider({ children }) {
           }
         }
 
-        // B. Persistence for MISSED tasks
-        if (hour >= dayStartTime && !hist[appTodayKey]) {
+        // B. Persistence for MISSED tasks (Recurring only)
+        if (hour >= dayStartTime && !hist[appTodayKey] && isRecurring) {
           const wasMissedYesterday = hist[yesterdayKey] === 'missed';
           if (wasMissedYesterday && newTask.status === 'missed') {
             const updatedHist = { ...hist, [appTodayKey]: 'missed' };
@@ -615,26 +641,55 @@ export function TasksProvider({ children }) {
     let sideEffects = { recordBroken: false, gamesUnlocked: false, taskTitle: '' };
 
     setTasks(prev => {
-      const task = prev.find(t => String(t.id) === String(taskId));
-      if (!task) return prev;
+      let task = prev.find(t => String(t.id) === String(taskId));
+      if (!task) {
+        // Search in subtasks
+        for (const pt of prev) {
+          const found = findInTree(pt.subtasks || [], taskId);
+          if (found) {
+            task = found;
+            break;
+          }
+        }
+      }
+      if (!task) {
+        console.log(`[completeTask] Task ${taskId} not found in state.`);
+        return prev;
+      }
 
       const isRecurring = !!task.frequency;
       const updatedHistory = { ...(task.statusHistory || {}), [historyKey]: intentStatus };
       const newStreak = calculateTaskStreak(updatedHistory, dayStartTime, isRecurring);
       const currentBest = task.bestStreak || 0;
-      const newBest = Math.max(currentBest, calculateBestStreak(updatedHistory));
+      const newBest = Math.max(currentBest, calculateBestStreak(updatedHistory, dayStartTime));
       
-      const now = new Date();
-      const yesterday = new Date(now);
-      if (now.getHours() < dayStartTime) yesterday.setDate(yesterday.getDate() - 1);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayKey = getLocalDateKey(yesterday);
-
-      if (isCompletion && isRecurring && newBest > currentBest && task.lastRecordAlertDate !== yesterdayKey) {
-        sideEffects.recordBroken = true;
-        sideEffects.taskTitle = task.title;
+      // RECORD ALERT LOGIC:
+      // We only show the "NEW RECORD!" banner if:
+      // 1. The NEW best is strictly greater than the OLD best.
+      // 2. The OLD streak was NOT already at the record level (prevents daily alerts for the same streak).
+      // 3. We haven't already alerted for this task today.
+      if (isCompletion && isRecurring && newBest > currentBest && task.streak < newBest && task.lastRecordAlertDate !== historyKey) {
+        // Also ensure that the new streak IS the record (to avoid alerting for old history edits)
+        if (newStreak === newBest) {
+          sideEffects.recordBroken = true;
+          sideEffects.taskTitle = task.title;
+        }
       }
-      if (isCompletion && task.energy === 'low') {
+      const todayKey = getAppDayKey(dayStartTime);
+      const normalizedDue = normalizeDateKey(task.dueDate);
+      const isDueToday = normalizedDue === todayKey;
+
+      console.log(`[completeTask] Checking Games Hub Unlock: 
+        Task: "${task.title}"
+        Energy: "${task.energy}"
+        Normalized Due: "${normalizedDue}"
+        Today Key: "${todayKey}"
+        Is Due Today: ${isDueToday}
+        Is Completion: ${isCompletion}
+      `);
+
+      if (isCompletion && task.energy === 'low' && isDueToday) {
+        console.log(`[completeTask] Condition MET. Setting gamesUnlocked side effect.`);
         sideEffects.gamesUnlocked = true;
       }
 
@@ -653,13 +708,25 @@ export function TasksProvider({ children }) {
           })
         };
       } else if (isCompletion) {
+        // AUTO-COMPLETE SUBTASKS (Task-specific setting > Global setting)
+        const shouldAutoComplete = task.resetSubtasksOnParentReset ?? resetSubtasksOnParentReset ?? true;
+        const finalSubtasks = shouldAutoComplete 
+          ? mapSubtasks(task.subtasks || [], s => {
+              if (s.status !== 'done' && s.status !== 'did_my_best') {
+                return { ...s, status: intentStatus, completedAt: new Date().toISOString() };
+              }
+              return s;
+            })
+          : task.subtasks;
+
         nextData = {
           status: intentStatus,
           completedAt: new Date().toISOString(),
-          gainedReward: reward
+          gainedReward: reward,
+          subtasks: finalSubtasks
         };
       } else {
-        nextData = { status: intentStatus };
+        nextData = { status: intentStatus || 'pending' };
         if (intentStatus === 'missed' || intentStatus === 'pending') {
           nextData.subtasks = mapSubtasks(task.subtasks || [], s => {
             if (s.status !== 'done' && s.status !== 'did_my_best') {
@@ -692,7 +759,12 @@ export function TasksProvider({ children }) {
         Alert.alert("🔥 NEW RECORD!", `You've beaten your best streak for "${sideEffects.taskTitle}"! Enjoy 5 free rolls.`);
       }
       if (sideEffects.gamesUnlocked) {
-        setGamesUnlockEndTime(Date.now() + 3600000);
+        console.log(`[completeTask] EXECUTING SIDE EFFECT: Adding 1800s to Games Hub.`);
+        setGamesPlayCredits(prev => {
+          const newVal = (prev || 0) + 1800;
+          AsyncStorage.setItem('adhddice_games_play_credits', String(newVal));
+          return newVal;
+        });
         needsImmediateSyncRef.current = true;
       }
     }
@@ -707,7 +779,10 @@ export function TasksProvider({ children }) {
       isSyncing,
       breakTimer, setBreakTimer, startBreak,
       adjustBreakTime, linkPrizeToBreak,
-      gamesUnlockEndTime, setGamesUnlockEndTime,
+      gamesPlayCredits, setGamesPlayCredits,
+      consumePlayCredits: (sec) => {
+        setGamesPlayCredits(prev => Math.max(0, prev - sec));
+      },
       completeTask
     }}>
       {children}

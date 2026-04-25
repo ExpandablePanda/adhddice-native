@@ -259,7 +259,7 @@ function groupByStatus(tasks, overstimulated = false, isFiltering = false) {
       const isDoneToday = h === 'done' || h === 'did_my_best';
       const isDone = t.status === 'done' || t.status === 'did_my_best' || isDoneToday;
       if (isDone) return false;
-      if (overstimulated && t.status === 'upcoming') return false;
+      if (t.status === 'upcoming') return false;
       return t.isUrgent;
     });
     if (urgentData.length > 0) {
@@ -3633,7 +3633,8 @@ export default function TasksScreen() {
     const currentHour = now.getHours();
     
     // Only show between dayStartTime (e.g. 6 AM) and 11 AM
-    if (currentHour >= dayStartTime && currentHour < 11) {
+    // Show as long as it's at or after dayStartTime (no upper bound)
+    if (currentHour >= dayStartTime) {
       const todayKey = getLocalDateKey(now);
       const lastStart = await AsyncStorage.getItem('@ADHD_last_morning_start');
       
@@ -3993,7 +3994,7 @@ export default function TasksScreen() {
 
   function handleTaskCompleting(id, reward) {
     if (reward) {
-      addReward(reward.points, reward.xp);
+      addReward(reward.points, reward.xp, reward.tokens);
     }
     incrementActiveStreak();
 
