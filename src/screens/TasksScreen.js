@@ -4865,7 +4865,7 @@ export default function TasksScreen() {
               const newHistory = { ...oldHistory, ...entries };
               
               const oldBest = task.bestStreak || 0;
-              const newBest = calculateBestStreak(newHistory);
+              const newBest = Math.max(oldBest, calculateBestStreak(newHistory));
               const recordBroken = newBest > oldBest;
 
               let newDones = 0;

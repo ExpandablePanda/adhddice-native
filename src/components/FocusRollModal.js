@@ -6,7 +6,7 @@ import { useEconomy } from '../lib/EconomyContext';
 import ModalScreen from './ModalScreen';
 import Dice3D from './Dice3D';
 
-export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', onClose, onFinish }) {
+export default function FocusRollModal({ visible, rolls, mode = 'reward', onClose, onFinish }) {
   const { bulkConsumeFreeRolls, addReward, removeReward } = useEconomy();
   const [step, setStep] = useState('select'); // select | rolling_tasks | ready_mult | rolling_mult | results
   const [selectedOpt, setSelectedOpt] = useState(null);
@@ -28,9 +28,9 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
   }
 
   const dieOptions = [
-    { id: 'easy', count: 1, name: 'Easy Tasks', desc: '1d20 per task' },
-    { id: 'medium', count: 2, name: 'Medium Tasks', desc: 'Best of 2d20 per task' },
-    { id: 'hard', count: 3, name: 'Hard Tasks', desc: 'Best of 3d20 per task' },
+    { id: 'easy', count: 1, name: 'Light Focus', desc: '1d20 per slot' },
+    { id: 'medium', count: 2, name: 'Deep Focus', desc: 'Best of 2d20 per slot' },
+    { id: 'hard', count: 3, name: 'Flow State', desc: 'Best of 3d20 per slot' },
   ];
 
   useEffect(() => {
@@ -141,18 +141,18 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
           <TouchableOpacity onPress={onClose} style={styles.iconBtn}>
             <Ionicons name="close" size={24} color="#6b7280" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{mode === 'reward' ? 'Efficiency Roll' : 'Efficiency Penalty'}</Text>
+          <Text style={styles.headerTitle}>{mode === 'reward' ? 'Focus Roll' : 'Distraction Penalty'}</Text>
           <View style={{ width: 44 }} />
         </View>
 
         <ScrollView contentContainerStyle={styles.body}>
           {step === 'select' && (
             <>
-              <Text style={styles.title}>{mode === 'reward' ? 'Roll Banked Dice' : 'Calculate Penalty'}</Text>
+              <Text style={styles.title}>{mode === 'reward' ? 'Focus Reward' : 'Calculate Penalty'}</Text>
               <Text style={styles.subtitle}>
                 {mode === 'reward' 
-                  ? `You are rolling ${rolls} dice at once. Select the die type that best matches the average difficulty of these tasks.`
-                  : `You incurred a ${rolls}-die penalty. Select the severity of the distraction to roll for points deduction.`
+                  ? `You logged ${rolls} focus slots. Select the intensity of your focus to roll for points.`
+                  : `You incurred a ${rolls}-die penalty. Select the distraction severity to calculate the deduction.`
                 }
               </Text>
 
@@ -185,8 +185,8 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
 
           {step === 'rolling_tasks' && (
             <View style={{ width: '100%', alignItems: 'center' }}>
-              <Text style={styles.title}>Efficiency Sequence</Text>
-              <Text style={styles.subtitle}>Task {currentTaskIndex + 1} of {rolls} ({selectedOpt.name})</Text>
+              <Text style={styles.title}>Focus Sequence</Text>
+              <Text style={styles.subtitle}>Slot {currentTaskIndex + 1} of {rolls}</Text>
               
               <View style={{ height: 200, width: '100%', flexDirection: 'row', justifyContent: 'center', gap: 10, marginVertical: 30 }}>
                 {/* 1. Show already settled subs */}
@@ -241,7 +241,7 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
                 ))}
               </View>
               <Text style={styles.subtitle}>
-                {mode === 'reward' ? 'Excellent focus!' : 'Stay strong!'} Now roll for your final Efficiency {mode === 'reward' ? 'Multiplier' : 'Mitigation'}.
+                {mode === 'reward' ? 'Excellent focus!' : 'Stay strong!'} Now roll for your final Focus {mode === 'reward' ? 'Multiplier' : 'Mitigation'}.
               </Text>
               <TouchableOpacity style={[styles.beginBtn, { backgroundColor: mode === 'reward' ? '#4f46e5' : '#111827' }]} onPress={handleRollMultiplier}>
                 <Ionicons name={mode === 'reward' ? 'flash' : 'shield-checkmark'} size={20} color="#fff" style={{marginRight: 8}}/>

@@ -6,12 +6,11 @@ import { useEconomy } from '../lib/EconomyContext';
 import ModalScreen from './ModalScreen';
 import Dice3D from './Dice3D';
 
-export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', onClose, onFinish }) {
-  const { bulkConsumeFreeRolls, addReward, removeReward } = useEconomy();
-  const [step, setStep] = useState('select'); // select | rolling_tasks | ready_mult | rolling_mult | results
-  const [selectedOpt, setSelectedOpt] = useState(null);
+export default function UnproductiveRollModal({ visible, rolls, onClose, onFinish }) {
+  const { removeReward } = useEconomy();
+  const [step, setStep] = useState('rolling_tasks'); // skip selection
   const [multiplier, setMultiplier] = useState(1);
-  const [finalResults, setFinalResults] = useState([]); // Array of winners
+  const [finalResults, setFinalResults] = useState([]); 
   
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
   const [currentSubs, setCurrentSubs] = useState([]);
@@ -34,18 +33,20 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
   ];
 
   useEffect(() => {
-    if (visible && !selectedOpt) {
-      setSelectedOpt(dieOptions[0]);
-    }
-  }, [visible]);
-
-  useEffect(() => {
     if (visible) {
-      setStep('select');
+      setStep('rolling_tasks'); // Auto-start for penalties
       setFinalResults([]);
       setCurrentTaskIndex(0);
       setAnimationStage('idle');
       setMultiplier(1);
+      
+      // Auto-decide multiplier
+      const r = Math.floor(Math.random() * 4) + 1;
+      const mults = [1, 0.75, 0.5, 0.25];
+      setMultiplier(mults[r - 1]);
+      
+      // Start rolling after a short delay
+      setTimeout(() => rollNextTask(0), 500);
     }
   }, [visible]);
 
@@ -72,7 +73,7 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
   }
 
   function rollNextSub(taskIdx, subIdx, accumulatedSubs) {
-    if (subIdx >= selectedOpt.count) {
+    if (subIdx >= 1) { // Distractions always 1 die per slot
       // All subs for this task are done
       setAnimationStage('settled');
       setCurrentSubRollingIndex(-1);
@@ -124,11 +125,7 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
   const payoutXp = Math.floor(payoutPoints / 2);
 
   const handleClaim = () => {
-    if (mode === 'reward') {
-      addReward(payoutPoints, payoutXp);
-    } else {
-      removeReward(payoutPoints, 0); // No XP deduction
-    }
+    removeReward(payoutPoints, 0); 
     onFinish();
   };
 
@@ -141,52 +138,17 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
           <TouchableOpacity onPress={onClose} style={styles.iconBtn}>
             <Ionicons name="close" size={24} color="#6b7280" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{mode === 'reward' ? 'Efficiency Roll' : 'Efficiency Penalty'}</Text>
+          <Text style={styles.headerTitle}>Distraction Penalty</Text>
           <View style={{ width: 44 }} />
         </View>
 
         <ScrollView contentContainerStyle={styles.body}>
-          {step === 'select' && (
-            <>
-              <Text style={styles.title}>{mode === 'reward' ? 'Roll Banked Dice' : 'Calculate Penalty'}</Text>
-              <Text style={styles.subtitle}>
-                {mode === 'reward' 
-                  ? `You are rolling ${rolls} dice at once. Select the die type that best matches the average difficulty of these tasks.`
-                  : `You incurred a ${rolls}-die penalty. Select the severity of the distraction to roll for points deduction.`
-                }
-              </Text>
-
-              {dieOptions.map(opt => (
-                <TouchableOpacity
-                  key={opt.id}
-                  style={[styles.dieOption, selectedOpt?.id === opt.id && { backgroundColor: mode === 'reward' ? '#f5f3ff' : '#fef2f2', borderColor: mode === 'reward' ? '#6d28d9' : '#ef4444' }]}
-                  onPress={() => setSelectedOpt(opt)}
-                >
-                  <View style={styles.dieInfo}>
-                    <Ionicons name="dice-outline" size={24} color={selectedOpt?.id === opt.id ? (mode === 'reward' ? '#6d28d9' : '#ef4444') : '#9ca3af'} />
-                    <View>
-                      <Text style={[styles.dieName, selectedOpt?.id === opt.id && { color: '#8b5cf6' }]}>{opt.name}</Text>
-                      <Text style={styles.dieDesc}>{opt.desc}</Text>
-                    </View>
-                  </View>
-                  <Ionicons 
-                    name={selectedOpt?.id === opt.id ? 'radio-button-on' : 'radio-button-off'} 
-                    size={22} 
-                    color={selectedOpt?.id === opt.id ? (mode === 'reward' ? '#6d28d9' : '#ef4444') : '#d1d5db'} 
-                  />
-                </TouchableOpacity>
-              ))}
-
-              <TouchableOpacity style={[styles.beginBtn, { backgroundColor: mode === 'reward' ? '#6d28d9' : '#ef4444', shadowColor: mode === 'reward' ? '#6d28d9' : '#ef4444' }]} onPress={startRoll}>
-                <Text style={styles.beginBtnText}>{mode === 'reward' ? 'Roll' : 'Incur'} {rolls} x {selectedOpt?.name}</Text>
-              </TouchableOpacity>
-            </>
-          )}
+          {/* Skip selection UI */}
 
           {step === 'rolling_tasks' && (
             <View style={{ width: '100%', alignItems: 'center' }}>
-              <Text style={styles.title}>Efficiency Sequence</Text>
-              <Text style={styles.subtitle}>Task {currentTaskIndex + 1} of {rolls} ({selectedOpt.name})</Text>
+              <Text style={styles.title}>Focus Sequence</Text>
+              <Text style={styles.subtitle}>Roll {currentTaskIndex + 1} of {rolls}</Text>
               
               <View style={{ height: 200, width: '100%', flexDirection: 'row', justifyContent: 'center', gap: 10, marginVertical: 30 }}>
                 {/* 1. Show already settled subs */}
@@ -197,10 +159,10 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
 
                   return (
                     <View key={idx} style={{ alignItems: 'center' }}>
-                      <Dice3D size={120} rolling={false} result={val} color={mode === 'reward' ? '#6d28d9' : '#ef4444'} />
+                      <Dice3D size={120} rolling={false} result={val} color="#ef4444" />
                       {(isWinner && (animationStage === 'settled' || animationStage === 'cleanup')) && (
-                        <View style={{ marginTop: 10, backgroundColor: mode === 'reward' ? '#6d28d9' : '#ef4444', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
-                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>{mode === 'reward' ? 'BEST' : 'WORST'}</Text>
+                        <View style={{ marginTop: 10, backgroundColor: '#ef4444', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>WORST</Text>
                         </View>
                       )}
                     </View>
@@ -210,7 +172,7 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
                 {/* 2. Show the currently rolling sub */}
                 {animationStage === 'rolling' && (
                   <View style={{ alignItems: 'center' }}>
-                    <Dice3D size={120} rolling={true} color={mode === 'reward' ? '#6d28d9' : '#ef4444'} />
+                    <Dice3D size={120} rolling={true} color="#ef4444" />
                   </View>
                 )}
               </View>
@@ -219,7 +181,7 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
               <View style={[styles.rollingDiceArea, { marginTop: 0 }]}>
                 {finalResults.map((res, i) => (
                   <View key={i} style={styles.historyDie}>
-                    <Dice3D size={50} rolling={false} result={res} color={mode === 'reward' ? '#8b5cf6' : '#ef4444'} />
+                    <Dice3D size={50} rolling={false} result={res} color="#ef4444" />
                   </View>
                 ))}
               </View>
@@ -236,30 +198,30 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
               <View style={styles.rollingDiceArea}>
                 {finalResults.map((res, i) => (
                   <View key={i} style={styles.historyDie}>
-                    <Dice3D size={50} rolling={false} result={res} color={mode === 'reward' ? '#8b5cf6' : '#ef4444'} />
+                    <Dice3D size={50} rolling={false} result={res} color="#ef4444" />
                   </View>
                 ))}
               </View>
               <Text style={styles.subtitle}>
-                {mode === 'reward' ? 'Excellent focus!' : 'Stay strong!'} Now roll for your final Efficiency {mode === 'reward' ? 'Multiplier' : 'Mitigation'}.
+                Stay strong! Now roll for your final Efficiency Mitigation.
               </Text>
-              <TouchableOpacity style={[styles.beginBtn, { backgroundColor: mode === 'reward' ? '#4f46e5' : '#111827' }]} onPress={handleRollMultiplier}>
-                <Ionicons name={mode === 'reward' ? 'flash' : 'shield-checkmark'} size={20} color="#fff" style={{marginRight: 8}}/>
-                <Text style={styles.beginBtnText}>Roll {mode === 'reward' ? 'Multiplier' : 'Mitigation'} (D4)</Text>
+              <TouchableOpacity style={[styles.beginBtn, { backgroundColor: '#111827' }]} onPress={handleRollMultiplier}>
+                <Ionicons name="shield-checkmark" size={20} color="#fff" style={{marginRight: 8}}/>
+                <Text style={styles.beginBtnText}>Roll Mitigation (D4)</Text>
               </TouchableOpacity>
             </>
           )}
 
           {step === 'rolling_mult' && (
             <>
-              <Text style={styles.title}>{mode === 'reward' ? 'Final Multiplier...' : 'Calculating Mitigation...'}</Text>
+              <Text style={styles.title}>Calculating Mitigation...</Text>
               <View style={styles.sumResultArea}>
-                <Text style={styles.sumLabel}>{mode === 'reward' ? 'Static Total' : 'Gross Penalty'}</Text>
+                <Text style={styles.sumLabel}>Gross Penalty</Text>
                 <Text style={styles.sumVal}>{sum}</Text>
               </View>
               <View style={{ alignItems: 'center', marginVertical: 40 }}>
-                <Text style={[styles.sumLabel, { color: mode === 'reward' ? '#6d28d9' : '#ef4444' }]}>ROLLING D4</Text>
-                <AnimatedRollingDice size={100} color={mode === 'reward' ? '#6d28d9' : '#ef4444'} />
+                <Text style={[styles.sumLabel, { color: '#ef4444' }]}>ROLLING D4</Text>
+                <AnimatedRollingDice size={100} color="#ef4444" />
               </View>
             </>
           )}
@@ -281,38 +243,28 @@ export default function EfficiencyRollModal({ visible, rolls, mode = 'reward', o
                 ))}
               </View>
 
-              <View style={[styles.multArea, { backgroundColor: mode === 'reward' ? '#eef2ff' : '#fff1f2' }]}>
-                <Ionicons name={mode === 'reward' ? 'close-outline' : 'remove-circle-outline'} size={24} color={mode === 'reward' ? '#6366f1' : '#ef4444'} />
-                <Text style={[styles.multText, { color: mode === 'reward' ? '#4f46e5' : '#ef4444' }]}>
-                  {mode === 'reward' ? `D4 Multiplier: ${multiplier}x` : `D4 Mitigation: ${multiplier}x factor`}
+              <View style={[styles.multArea, { backgroundColor: '#fff1f2' }]}>
+                <Ionicons name="remove-circle-outline" size={24} color="#ef4444" />
+                <Text style={[styles.multText, { color: '#ef4444' }]}>
+                  D4 Mitigation: {multiplier}x factor
                 </Text>
               </View>
 
-              <View style={[styles.payoutCard, { borderColor: mode === 'reward' ? '#8b5cf610' : '#ef444410', backgroundColor: mode === 'reward' ? '#faf9ff' : '#fffbfb' }]}>
-                <Text style={[styles.payoutTitle, { color: mode === 'reward' ? '#8b5cf6' : '#ef4444' }]}>
-                  {mode === 'reward' ? 'Final Reward' : 'Final Deduction'}
-                </Text>
+              <View style={[styles.payoutCard, { borderColor: '#ef444410', backgroundColor: '#fffbfb' }]}>
+                <Text style={[styles.payoutTitle, { color: '#ef4444' }]}>Final Deduction</Text>
                 <View style={styles.payoutRow}>
                   <View style={styles.payoutItem}>
                     <Text style={styles.payoutVal}>{payoutPoints}</Text>
                     <Text style={styles.payoutLabel}>Points</Text>
                   </View>
-                  {mode === 'reward' && (
-                    <View style={styles.payoutItem}>
-                      <Text style={styles.payoutVal}>{payoutXp}</Text>
-                      <Text style={styles.payoutLabel}>XP</Text>
-                    </View>
-                  )}
                 </View>
               </View>
 
               <TouchableOpacity 
-                style={[styles.beginBtn, { marginTop: 32, backgroundColor: mode === 'reward' ? '#6d28d9' : '#111827' }]} 
+                style={[styles.beginBtn, { marginTop: 32, backgroundColor: '#111827' }]} 
                 onPress={handleClaim}
               >
-                <Text style={styles.beginBtnText}>
-                  {mode === 'reward' ? 'Claim All Rewards' : 'Accept Penalty'}
-                </Text>
+                <Text style={styles.beginBtnText}>Accept Penalty</Text>
               </TouchableOpacity>
             </>
           )}
@@ -411,7 +363,7 @@ const styles = StyleSheet.create({
   },
   dieOptionActive: {
     backgroundColor: '#f5f3ff',
-    borderColor: '#6d28d9',
+    borderColor: '#8b5cf6',
   },
   dieInfo: {
     flexDirection: 'row',
@@ -430,12 +382,12 @@ const styles = StyleSheet.create({
   },
   beginBtn: {
     width: '100%',
-    backgroundColor: '#6d28d9',
+    backgroundColor: '#8b5cf6',
     paddingVertical: 18,
     borderRadius: 18,
     alignItems: 'center',
     marginTop: 24,
-    shadowColor: '#6d28d9',
+    shadowColor: '#8b5cf6',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 12,
@@ -497,14 +449,14 @@ const styles = StyleSheet.create({
     padding: 30,
     borderRadius: 24,
     borderWidth: 2,
-    borderColor: '#6d28d910',
+    borderColor: '#8b5cf610',
     alignItems: 'center',
     backgroundColor: '#faf9ff',
   },
   payoutTitle: {
     fontSize: 15,
     fontWeight: '800',
-    color: '#a855f7',
+    color: '#8b5cf6',
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: 20,

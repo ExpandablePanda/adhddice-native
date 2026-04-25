@@ -622,9 +622,15 @@ export function TasksProvider({ children }) {
       const updatedHistory = { ...(task.statusHistory || {}), [historyKey]: intentStatus };
       const newStreak = calculateTaskStreak(updatedHistory, dayStartTime, isRecurring);
       const currentBest = task.bestStreak || 0;
-      const newBest = calculateBestStreak(updatedHistory);
+      const newBest = Math.max(currentBest, calculateBestStreak(updatedHistory));
       
-      if (isCompletion && isRecurring && newBest > currentBest) {
+      const now = new Date();
+      const yesterday = new Date(now);
+      if (now.getHours() < dayStartTime) yesterday.setDate(yesterday.getDate() - 1);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayKey = getLocalDateKey(yesterday);
+
+      if (isCompletion && isRecurring && newBest > currentBest && task.lastRecordAlertDate !== yesterdayKey) {
         sideEffects.recordBroken = true;
         sideEffects.taskTitle = task.title;
       }
@@ -669,7 +675,8 @@ export function TasksProvider({ children }) {
         ...nextData,
         statusHistory: updatedHistory,
         streak: newStreak,
-        bestStreak: newBest
+        bestStreak: newBest,
+        lastRecordAlertDate: sideEffects.recordBroken ? historyKey : task.lastRecordAlertDate
       };
 
       logTaskEvent(updated, intentStatus);

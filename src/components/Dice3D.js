@@ -88,34 +88,43 @@ function D20Model({ rolling, result, color, manualRotation }) {
 
     clone.traverse((child) => {
       if (child.isMesh) {
-        // Rebuild materials mapping them to our isolated internal engine.
-        // We know the exact mesh names from our terminal diagnostic logs!
-        
         if (child.name.includes('Letters')) {
-          // Pure White for the numbers so they pop perfectly in all lighting
           child.material = new THREE.MeshBasicMaterial({
             color: new THREE.Color('#ffffff')
           });
         } else {
-          // Deep royal purple with a realistic polished resin/acrylic look
-          // We ignore the incoming `color` prop because the app theme was overriding it with a lighter flat purple.
-          const baseColor = new THREE.Color('#2e1065'); // Deep ultra-dark violet (tailwind violet-950)
+          const baseColor = new THREE.Color(color || '#6d28d9'); // Dark Purple
           
           child.material = new THREE.MeshPhysicalMaterial({
             color: baseColor,
-            metalness: 0.0,         // Resin is not metallic
-            roughness: 0.3,         // Base surface roughness
-            clearcoat: 1.0,         // Gives it that signature glossy acrylic "shell"
-            clearcoatRoughness: 0.1 // Sharp, realistic reflections
+            metalness: 0.1,
+            roughness: 0.2,
+            clearcoat: 1.0,         
+            clearcoatRoughness: 0.05,
+            emissive: new THREE.Color('#2e1065'), // Even darker purple glow
+            emissiveIntensity: 0.1
           });
         }
       }
     });
     return clone;
-  }, [scene, color]);
+  }, [scene]);
 
   const targetQuaternion = useRef(new THREE.Quaternion());
   const currentQuaternion = useRef(new THREE.Quaternion());
+
+  // Update material color when prop changes without re-cloning the scene
+  useEffect(() => {
+    if (!clonedScene || !color) return;
+    const newColor = new THREE.Color(color);
+    clonedScene.traverse((child) => {
+      if (child.isMesh && !child.name.includes('Letters')) {
+        if (child.material && child.material.color) {
+          child.material.color.copy(newColor);
+        }
+      }
+    });
+  }, [clonedScene, color]);
 
   // Dispose resources on unmount
   useEffect(() => {
@@ -200,12 +209,12 @@ export default function Dice3D({ size, rolling, result, color }) {
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' }}>
       <LoadingState color={color} />
       
-      <Canvas style={{ flex: 1, width: '100%', height: '100%' }} alpha legacy samples={0}>
+      <Canvas style={{ flex: 1, width: '100%', height: '100%' }} alpha legacy={false} samples={4}>
         <PerspectiveCamera makeDefault position={[0, 0, 6]} fov={35} />
-        <ambientLight intensity={1.5} />
-        <directionalLight position={[5, 10, 5]} intensity={2} />
-        <directionalLight position={[-5, -5, -5]} intensity={0.8} />
-        <pointLight position={[-5, 5, 5]} intensity={2} />
+        <ambientLight intensity={0.8} />
+        <directionalLight position={[10, 10, 10]} intensity={2.5} />
+        <directionalLight position={[-10, 5, -5]} intensity={1.2} />
+        <pointLight position={[0, 5, 5]} intensity={1.5} color="#ffffff" />
         
         <ModelErrorBoundary>
           <Suspense fallback={null}>

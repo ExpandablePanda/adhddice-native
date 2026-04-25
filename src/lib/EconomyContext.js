@@ -418,26 +418,25 @@ export function EconomyProvider({ children }) {
     return Math.floor(getRollCost() * 3);
   };
 
-  const calculateDiminishingPoints = (minutes) => {
+  const getFocusDiceCount = (minutes) => {
     if (minutes <= 0) return 0;
+    let diceCount = 0;
+    
+    // Flat 1 d20 per 30 mins
+    diceCount = Math.floor(minutes / 30);
+
+    // Minimum 1 die if at least 15 mins
+    if (diceCount === 0 && minutes >= 15) diceCount = 1;
+    return diceCount;
+  };
+
+  const calculateDiminishingPoints = (minutes) => {
+    const diceCount = getFocusDiceCount(minutes);
     let pts = 0;
-    // Tier 1: 0-60 mins (2 pts/min)
-    const t1 = Math.min(minutes, 60);
-    pts += t1 * 2;
-    
-    // Tier 2: 60-180 mins (1 pt/min)
-    if (minutes > 60) {
-      const t2 = Math.min(minutes - 60, 120);
-      pts += t2 * 1;
+    for (let i = 0; i < diceCount; i++) {
+      pts += Math.floor(Math.random() * 20) + 1;
     }
-    
-    // Tier 3: 180+ mins (0.5 pt/min)
-    if (minutes > 180) {
-      const t3 = minutes - 180;
-      pts += t3 * 0.5;
-    }
-    
-    return Math.floor(pts);
+    return pts;
   };
 
   const updateDailyRecord = (count) => {
@@ -456,7 +455,7 @@ export function EconomyProvider({ children }) {
       addXP, addFreeRoll, bulkConsumeFreeRolls,
       addBankedReward, claimBankedRewards,
       addVaultPrize, editVaultPrize, unlockPrizeByTaskId, deleteVaultPrize, claimVaultPrize, contributeTokensToPrize,
-      addTokens, spendTokens, getRollCost, getReshuffleCost, getPrizeEditCost, calculateDiminishingPoints,
+      addTokens, spendTokens, getRollCost, getReshuffleCost, getPrizeEditCost, calculateDiminishingPoints, getFocusDiceCount,
       updateDailyRecord
     }}>
       {children}

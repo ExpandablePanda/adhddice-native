@@ -177,10 +177,10 @@ function PrizeManagerModal({ visible, pools, onSave, onClose, onDevWipe }) {
           {['master', 'small', 'big'].map(t => (
             <TouchableOpacity 
               key={t}
-              style={{ flex: 1, alignItems: 'center', paddingVertical: 12, borderBottomWidth: 2, borderColor: activeTab === t ? colors.primary : 'transparent' }}
+              style={{ flex: 1, alignItems: 'center', paddingVertical: 12, borderBottomWidth: 2, borderColor: activeTab === t ? '#6d28d9' : 'transparent' }}
               onPress={() => { setActiveTab(t); setBulkMode(false); }}
             >
-              <Text style={{ fontWeight: '600', color: activeTab === t ? colors.primary : colors.textMuted, textTransform: 'capitalize' }}>{t}</Text>
+              <Text style={{ fontWeight: '600', color: activeTab === t ? '#6d28d9' : colors.textMuted, textTransform: 'capitalize' }}>{t}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -198,20 +198,20 @@ function PrizeManagerModal({ visible, pools, onSave, onClose, onDevWipe }) {
           {activeTab !== 'master' && (
             <View style={styles.quickActions}>
               <TouchableOpacity style={styles.quickBtn} onPress={() => setBulkMode(b => !b)}>
-                <Ionicons name="list-outline" size={16} color={colors.primary} />
+                <Ionicons name="list-outline" size={16} color="#6d28d9" />
                 <Text style={styles.quickBtnText}>Bulk Import</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.quickBtn} onPress={resetDefaults}>
-                <Ionicons name="refresh-outline" size={16} color={colors.primary} />
+                <Ionicons name="refresh-outline" size={16} color="#6d28d9" />
                 <Text style={styles.quickBtnText}>Defaults</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.quickBtn, { borderColor: '#ef4444' }]} onPress={clearTab}>
                 <Ionicons name="trash-outline" size={16} color="#ef4444" />
                 <Text style={[styles.quickBtnText, { color: '#ef4444' }]}>Clear List</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.quickBtn, { borderColor: '#6366f1' }]} onPress={onDevWipe}>
-                <Ionicons name="flash-outline" size={16} color="#6366f1" />
-                <Text style={[styles.quickBtnText, { color: '#6366f1' }]}>Dev Wipe & 100 Rolls</Text>
+              <TouchableOpacity style={[styles.quickBtn, { borderColor: '#6d28d9' }]} onPress={onDevWipe}>
+                <Ionicons name="flash-outline" size={16} color="#6d28d9" />
+                <Text style={[styles.quickBtnText, { color: '#6d28d9' }]}>Dev Wipe & 100 Rolls</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -311,13 +311,13 @@ function VaultModal({ visible, onClose }) {
         padding: 16,
         marginBottom: 12,
         borderWidth: 1.5,
-        borderColor: isReadyToClaim ? '#059669' : (isTokenStore ? '#6366f1' : colors.border),
+        borderColor: isReadyToClaim ? '#059669' : (isTokenStore ? '#6d28d9' : colors.border),
         shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, elevation: 2
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View style={{ 
             width: 44, height: 44, borderRadius: 22, 
-            backgroundColor: isReadyToClaim ? '#059669' : (isTokenStore ? '#6366f1' : '#f3f4f6'), 
+            backgroundColor: isReadyToClaim ? '#059669' : (isTokenStore ? '#6d28d9' : '#f3f4f6'), 
             alignItems: 'center', justifyContent: 'center', marginRight: 16
           }}>
             <Ionicons name={isReadyToClaim ? "gift" : (isTokenStore ? "wallet" : "lock-closed")} size={22} color={isReadyToClaim || isTokenStore ? "#fff" : "#6b7280"} />
@@ -337,15 +337,15 @@ function VaultModal({ visible, onClose }) {
               <View style={{ marginTop: 8, marginRight: 8 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Ionicons name="wallet" size={10} color="#8b5cf6" />
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#8b5cf6' }}>
+                    <Ionicons name="wallet" size={10} color="#6d28d9" />
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#6d28d9' }}>
                       {remaining > 0 ? `${remaining} Left` : 'Paid'}
                     </Text>
                   </View>
                   <Text style={{ fontSize: 9, color: colors.textMuted }}>{Math.round(((prize.tokensPaid || 0) / (prize.tokenCost || 1)) * 100)}%</Text>
                 </View>
                 <View style={{ height: 4, width: '100%', backgroundColor: '#f3f4f6', borderRadius: 2, overflow: 'hidden' }}>
-                  <View style={{ height: '100%', width: `${Math.min(100, ((prize.tokensPaid || 0) / (prize.tokenCost || 1)) * 100)}%`, backgroundColor: '#8b5cf6' }} />
+                  <View style={{ height: '100%', width: `${Math.min(100, ((prize.tokensPaid || 0) / (prize.tokenCost || 1)) * 100)}%`, backgroundColor: '#6d28d9' }} />
                 </View>
               </View>
             )}
@@ -376,7 +376,7 @@ function VaultModal({ visible, onClose }) {
                       setPayPrize(prize);
                       setPayInput(String(Math.min(economy.tokens, remaining)));
                     }}
-                    style={{ backgroundColor: '#8b5cf6', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 }}
+                    style={{ backgroundColor: '#6d28d9', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 }}
                   >
                     <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>Pay</Text>
                   </TouchableOpacity>
@@ -387,7 +387,7 @@ function VaultModal({ visible, onClose }) {
                     style={{ padding: 10 }}
                     hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
                   >
-                    <Ionicons name="pencil" size={20} color={colors.primary} />
+                    <Ionicons name="pencil" size={20} color="#6d28d9" />
                   </TouchableOpacity>
                   <TouchableOpacity 
                     onPress={() => {
@@ -506,8 +506,8 @@ function VaultModal({ visible, onClose }) {
           <View style={{ alignItems: 'center' }}>
             <Text style={styles.managerTitle}>Prize Vault</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Ionicons name="wallet" size={12} color="#8b5cf6" />
-              <Text style={{ fontSize: 12, fontWeight: '700', color: '#8b5cf6' }}>{economy.tokens || 0} Tokens</Text>
+              <Ionicons name="wallet" size={12} color="#6d28d9" />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#6d28d9' }}>{economy.tokens || 0} Tokens</Text>
             </View>
           </View>
           <TouchableOpacity onPress={() => {
@@ -548,7 +548,7 @@ function VaultModal({ visible, onClose }) {
               <Text style={{ fontWeight: '600', color: colors.textSecondary, fontSize: 13, marginBottom: 6, textTransform: 'uppercase' }}>Token Cost</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 12 }}>
                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#f3f4f6', borderRadius: 12, paddingHorizontal: 12 }}>
-                  <Ionicons name="wallet" size={18} color="#8b5cf6" />
+                  <Ionicons name="wallet" size={18} color="#6d28d9" />
                   <TextInput
                     style={{ flex: 1, height: 50, paddingHorizontal: 8, color: colors.textPrimary, fontSize: 16, fontWeight: '700' }}
                     keyboardType="numeric"
@@ -565,7 +565,7 @@ function VaultModal({ visible, onClose }) {
                 <Text style={{ fontWeight: '600', color: colors.textSecondary, fontSize: 13, textTransform: 'uppercase' }}>Link to Tasks ({selectedIds.size})</Text>
                 {selectedIds.size > 0 && (
                   <TouchableOpacity onPress={() => setSelectedIds(new Set())}>
-                    <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '700' }}>Clear All</Text>
+                    <Text style={{ fontSize: 12, color: '#6d28d9', fontWeight: '700' }}>Clear All</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -1424,7 +1424,7 @@ export default function DiceScreen({ navigation, route }) {
 
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <Ionicons name="dice-outline" size={24} color={colors.primary} />
+            <Ionicons name="dice-outline" size={24} color="#6d28d9" />
             <View>
               <Text style={styles.headerTitle}>Roll</Text>
               <Text style={styles.headerSub}>
@@ -1437,12 +1437,12 @@ export default function DiceScreen({ navigation, route }) {
               style={[styles.manageBtn, unlockedCount > 0 && { backgroundColor: '#d1fae5', borderColor: '#059669' }]} 
               onPress={() => setShowVault(true)}
             >
-              <Ionicons name={unlockedCount > 0 ? "gift" : "lock-closed-outline"} size={18} color={unlockedCount > 0 ? "#059669" : colors.primary} />
+              <Ionicons name={unlockedCount > 0 ? "gift" : "lock-closed-outline"} size={18} color={unlockedCount > 0 ? "#059669" : "#6d28d9"} />
               <Text style={[styles.manageBtnText, unlockedCount > 0 && { color: '#059669' }]}>Vault</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.manageBtn} onPress={() => setShowManager(true)}>
-              <Ionicons name="settings-outline" size={18} color={colors.primary} />
+              <Ionicons name="settings-outline" size={18} color="#6d28d9" />
               <Text style={styles.manageBtnText}>Prizes</Text>
             </TouchableOpacity>
           </View>
@@ -1478,8 +1478,8 @@ export default function DiceScreen({ navigation, route }) {
                   size={Platform.OS === 'web' ? Math.min(SCREEN_W * 0.8, 320) : SCREEN_W * 0.8} 
                   rolling={rolling} 
                   result={result} 
-                  color={colors.primary} 
-                  glowColor={colors.primary} 
+                  color="#6d28d9" 
+                  glowColor="#6d28d9" 
                 />
               ) : (
                 <View style={{ width: 320, height: 320 }} />
@@ -1505,7 +1505,7 @@ export default function DiceScreen({ navigation, route }) {
         {!rolling && (
           <View style={{ alignItems: 'center', marginBottom: 32, gap: 12 }}>
             <TouchableOpacity 
-              style={styles.rollAgainBtn} 
+              style={[styles.rollAgainBtn, { backgroundColor: '#6d28d9' }]} 
               onPress={rollDice}
               activeOpacity={0.8}
             >
@@ -1523,7 +1523,7 @@ export default function DiceScreen({ navigation, route }) {
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={[styles.rollAgainBtn, { backgroundColor: colors.primary }]} 
+              style={[styles.rollAgainBtn, { backgroundColor: '#4c1d95' }]} 
               onPress={startRealRoll}
               activeOpacity={0.8}
             >
@@ -2014,7 +2014,7 @@ export default function DiceScreen({ navigation, route }) {
                 <Text style={{ color: '#4b5563', fontWeight: '700' }}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={{ flex: 2, paddingVertical: 14, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center' }} 
+                style={{ flex: 2, paddingVertical: 14, borderRadius: 14, backgroundColor: '#6d28d9', alignItems: 'center' }} 
                 onPress={submitManualRoll}
               >
                 <Text style={{ color: '#fff', fontWeight: '800' }}>Confirm Roll</Text>
@@ -2065,15 +2065,15 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 10,
     borderWidth: 1.5,
-    borderColor: '#6366f1',
+    borderColor: '#6d28d9',
   },
   manageBtnText: {
-    color: colors.primary,
+    color: '#6d28d9',
     fontWeight: '600',
     fontSize: 14,
   },
   headerBadgeText: {
-    color: colors.primary,
+    color: '#6d28d9',
     fontWeight: '800',
     fontSize: 13,
   },
@@ -2094,7 +2094,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   bankText: {
-    color: colors.primary,
+    color: '#6d28d9',
     fontSize: 13,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -2152,7 +2152,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 12,
-    backgroundColor: colors.primary,
+    backgroundColor: '#6d28d9',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2171,7 +2171,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: colors.primary,
+    backgroundColor: '#6d28d9',
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 12,
@@ -2246,7 +2246,7 @@ const styles = StyleSheet.create({
   historyFaceText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.primary,
+    color: '#6d28d9',
   },
   historyPrize: {
     flex: 1,
@@ -2308,7 +2308,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   savePrizesBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#6d28d9',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
@@ -2339,10 +2339,10 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1.5,
-    borderColor: colors.primary,
+    borderColor: '#6d28d9',
   },
   quickBtnText: {
-    color: colors.primary,
+    color: '#6d28d9',
     fontWeight: '600',
     fontSize: 13,
   },
@@ -2367,7 +2367,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   bulkImportBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#6d28d9',
     borderRadius: 10,
     padding: 12,
     alignItems: 'center',
@@ -2470,7 +2470,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fafbff',
     borderRadius: 16,
     borderWidth: 1.5,
-    borderColor: colors.primary + '30',
+    borderColor: '#6d28d930',
   },
   poolHeader: {
     flexDirection: 'row',
@@ -2489,7 +2489,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   poolBadge: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#6d28d9',
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 3,
@@ -2534,7 +2534,7 @@ const styles = StyleSheet.create({
   poolCountText: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.primary,
+    color: '#6d28d9',
   },
   claimBtn: {
     flexDirection: 'row',
@@ -2579,7 +2579,7 @@ const styles = StyleSheet.create({
     borderRadius: 80,
     backgroundColor: '#fff',
     borderWidth: 4,
-    borderColor: colors.primary,
+    borderColor: '#6d28d9',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -2598,7 +2598,7 @@ const styles = StyleSheet.create({
   linkedPrizeLabel: {
     fontSize: 9,
     fontWeight: '800',
-    color: colors.primary,
+    color: '#6d28d9',
     letterSpacing: 1,
     marginBottom: 4,
   },
@@ -2621,7 +2621,7 @@ const styles = StyleSheet.create({
   clockSub: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.primary,
+    color: '#6d28d9',
     marginTop: 4,
     textTransform: 'uppercase',
     textAlign: 'center',
@@ -2658,8 +2658,8 @@ const styles = StyleSheet.create({
     borderColor: '#e5e7eb',
   },
   breakOptActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: '#6d28d9',
+    borderColor: '#6d28d9',
   },
   breakOptText: {
     fontSize: 14,
@@ -2683,7 +2683,7 @@ const styles = StyleSheet.create({
   linkPrizeText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.primary,
+    color: '#6d28d9',
   },
 
 });

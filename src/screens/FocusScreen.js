@@ -14,6 +14,9 @@ import ScrollToTop from '../components/ScrollToTop';
 import ModalScreen from '../components/ModalScreen';
 import { useFocus, DEFAULT_CATEGORIES } from '../lib/FocusContext';
 import { useEconomy } from '../lib/EconomyContext';
+import Dice3D from '../components/Dice3D';
+import FocusRollModal from '../components/FocusRollModal';
+import UnproductiveRollModal from '../components/UnproductiveRollModal';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -1005,204 +1008,9 @@ function FocusImportModal({ visible, categories, onClose, onImport }) {
   );
 }
 
-function FocusRewardModal({ visible, minutes, basePoints, onClose, onClaim }) {
-  const [step, setStep] = useState('offer'); // offer | rolling | result
-  const [roll, setRoll] = useState(null);
-  const spinVal = useRef(new Animated.Value(0)).current;
-  const rollPlayer = useAudioPlayer(require('../../assets/dice-roll.wav'));
+// EfficiencyRollModal handles the display now
 
-  function playRollSound() {
-    rollPlayer.play();
-  }
-
-  useEffect(() => {
-    if (visible) { setStep('offer'); setRoll(null); }
-  }, [visible]);
-
-  function handleRoll() {
-    setStep('rolling');
-    playRollSound();
-    Animated.sequence([
-      Animated.timing(spinVal, { toValue: 1, duration: 800, useNativeDriver: true }),
-    ]).start(() => {
-      const r = Math.floor(Math.random() * 6) + 1;
-      setRoll(r);
-      setStep('result');
-      // Play sound again on result reveal for impact
-      playRollSound();
-      spinVal.setValue(0);
-    });
-  }
-
-  const doubled = roll >= 5;
-  const totalPoints = doubled ? basePoints * 2 : basePoints;
-  const spinDeg = spinVal.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '720deg'] });
-
-  return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}>
-        <View style={{ backgroundColor: '#fff', borderRadius: 24, padding: 28, width: '85%', alignItems: 'center', gap: 12 }}>
-          {step === 'offer' && (
-            <>
-              <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: '#ede9fe', alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="timer" size={28} color="#6366f1" />
-              </View>
-              <Text style={{ fontSize: 20, fontWeight: '800', color: '#111827' }}>Focus Reward!</Text>
-              <Text style={{ fontSize: 14, color: '#6b7280', textAlign: 'center' }}>
-                {fmtDuration(minutes)} logged → <Text style={{ fontWeight: '700', color: '#6366f1' }}>+{basePoints} pts</Text>
-              </Text>
-              <Text style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', marginTop: -4 }}>
-                Roll a D6 — land a 5 or 6 and double it!
-              </Text>
-              <TouchableOpacity
-                style={{ backgroundColor: '#6366f1', paddingHorizontal: 32, paddingVertical: 14, borderRadius: 14, marginTop: 4 }}
-                onPress={handleRoll}
-              >
-                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>Roll D6</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => onClaim(basePoints)}>
-                <Text style={{ color: '#9ca3af', fontSize: 13, marginTop: 4 }}>Skip — just take the {basePoints} pts</Text>
-              </TouchableOpacity>
-            </>
-          )}
-          {step === 'rolling' && (
-            <>
-              <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>Rolling…</Text>
-              <Animated.View style={{ transform: [{ rotate: spinDeg }], marginVertical: 12 }}>
-                <Ionicons name="dice-outline" size={64} color="#6366f1" />
-              </Animated.View>
-            </>
-          )}
-          {step === 'result' && (
-            <>
-              <Text style={{ fontSize: 48, fontWeight: '900', color: doubled ? '#6366f1' : '#111827' }}>{roll}</Text>
-              {doubled ? (
-                <>
-                  <Text style={{ fontSize: 20, fontWeight: '800', color: '#6366f1' }}>DOUBLED! 🎉</Text>
-                  <Text style={{ fontSize: 14, color: '#6b7280', textAlign: 'center' }}>
-                    {basePoints} pts × 2 = <Text style={{ fontWeight: '800', color: '#6366f1' }}>+{totalPoints} pts</Text>
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>No double this time</Text>
-                  <Text style={{ fontSize: 14, color: '#6b7280' }}>You earn <Text style={{ fontWeight: '700' }}>+{basePoints} pts</Text></Text>
-                </>
-              )}
-              <TouchableOpacity
-                style={{ backgroundColor: '#6366f1', paddingHorizontal: 32, paddingVertical: 14, borderRadius: 14, marginTop: 8 }}
-                onPress={() => onClaim(totalPoints)}
-              >
-                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>Claim +{totalPoints} pts</Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function UnproductivePenaltyModal({ visible, minutes, baseDeduction, onClose, onDeduct }) {
-  const [step, setStep] = useState('warning'); // warning | rolling | result
-  const [roll, setRoll] = useState(null);
-  const spinVal = useRef(new Animated.Value(0)).current;
-  const rollSoundRef = useRef(null);
-
-  useEffect(() => {
-    async function loadSound() {
-      try {
-        const { sound } = await Audio.Sound.createAsync(require('../../assets/dice-roll.wav'));
-        rollSoundRef.current = sound;
-      } catch (e) { }
-    }
-    loadSound();
-    return () => { if (rollSoundRef.current) rollSoundRef.current.unloadAsync(); };
-  }, []);
-
-  function playRollSound() {
-    try { rollPlayer.seekTo(0); rollPlayer.play(); } catch (e) { }
-  }
-
-  useEffect(() => {
-    if (visible) { setStep('warning'); setRoll(null); }
-  }, [visible]);
-
-  function handleRoll() {
-    setStep('rolling');
-    playRollSound();
-    Animated.timing(spinVal, { toValue: 1, duration: 800, useNativeDriver: true }).start(() => {
-      const r = Math.floor(Math.random() * 6) + 1;
-      setRoll(r);
-      setStep('result');
-      playRollSound();
-      spinVal.setValue(0);
-    });
-  }
-
-  const saved = roll >= 5;
-  const totalDeduction = saved ? Math.floor(baseDeduction / 2) : baseDeduction;
-  const spinDeg = spinVal.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '720deg'] });
-
-  return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center' }}>
-        <View style={{ backgroundColor: '#fff', borderRadius: 24, padding: 28, width: '85%', alignItems: 'center', gap: 12 }}>
-          {step === 'warning' && (
-            <>
-              <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: '#fee2e2', alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="alert-circle" size={28} color="#ef4444" />
-              </View>
-              <Text style={{ fontSize: 20, fontWeight: '800', color: '#111827' }}>Points Deduction</Text>
-              <Text style={{ fontSize: 14, color: '#6b7280', textAlign: 'center' }}>
-                {fmtDuration(minutes)} of unproductive time → <Text style={{ fontWeight: '700', color: '#ef4444' }}>-{baseDeduction} pts</Text>
-              </Text>
-              <Text style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', marginTop: -4 }}>
-                Roll a D6 — land a 5 or 6 and lose only half!
-              </Text>
-              <TouchableOpacity
-                style={{ backgroundColor: '#ef4444', paddingHorizontal: 32, paddingVertical: 14, borderRadius: 14, marginTop: 4 }}
-                onPress={handleRoll}
-              >
-                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>Roll D6 to Save</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => onDeduct(baseDeduction)}>
-                <Text style={{ color: '#9ca3af', fontSize: 13, marginTop: 4 }}>Accept full penalty (-{baseDeduction} pts)</Text>
-              </TouchableOpacity>
-            </>
-          )}
-
-          {step === 'rolling' && (
-            <Animated.View style={{ transform: [{ rotate: spinDeg }], marginVertical: 30 }}>
-              <Ionicons name="dice" size={80} color="#ef4444" />
-            </Animated.View>
-          )}
-
-          {step === 'result' && (
-            <>
-              <Text style={{ fontSize: 48, fontWeight: '900', color: saved ? '#10b981' : '#ef4444', marginVertical: 10 }}>{roll}</Text>
-              <Text style={{ fontSize: 20, fontWeight: '800', color: '#111827' }}>
-                {saved ? 'Close Call!' : 'Ouch! Full Penalty.'}
-              </Text>
-              <Text style={{ fontSize: 14, color: '#6b7280', textAlign: 'center' }}>
-                {saved ? 'A roll of 5 or 6 saved half your points.' : 'Better luck next time.'}
-              </Text>
-              <View style={{ backgroundColor: '#f9fafb', padding: 16, borderRadius: 16, width: '100%', alignItems: 'center', marginTop: 10 }}>
-                <Text style={{ fontSize: 22, fontWeight: '900', color: '#111827' }}>-{totalDeduction} pts</Text>
-              </View>
-              <TouchableOpacity
-                style={{ backgroundColor: '#111827', width: '100%', paddingVertical: 14, borderRadius: 14, alignItems: 'center', marginTop: 10 }}
-                onPress={() => onDeduct(totalDeduction)}
-              >
-                <Text style={{ color: '#fff', fontWeight: '800' }}>Confirm</Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-      </View>
-    </Modal>
-  );
-}
+// EfficiencyRollModal handles the display now
 
 // ═════════════════════════════════════════════════════════════════════════════
 // MAIN FOCUS SCREEN
@@ -1219,7 +1027,7 @@ export default function FocusScreen() {
     adjustTimer,
     startTimer, stopTimer, resetTimer
   } = useFocus();
-  const { addReward, removeReward, calculateDiminishingPoints } = useEconomy();
+  const { addReward, removeReward, calculateDiminishingPoints, getFocusDiceCount } = useEconomy();
   const galleryScrolledRef = useRef(false);
 
   const [timerSeconds, setTimerSeconds] = useState(0); // For display only
@@ -1299,12 +1107,15 @@ export default function FocusScreen() {
     setPendingLog(null);
     setPendingNote('');
 
-    if (isUnproductive) {
-      setPendingPenalty({ minutes, baseDeduction: minutes });
-    } else {
-      const basePoints = calculateDiminishingPoints(minutes);
-      setPendingFocusReward({ minutes, basePoints });
-    }
+    // Add a short delay to ensure the confirmation modal is closed before showing the 3D dice
+    setTimeout(() => {
+      const diceCount = getFocusDiceCount(minutes);
+      if (isUnproductive) {
+        setPendingPenalty({ minutes, diceCount });
+      } else {
+        setPendingFocusReward({ minutes, diceCount });
+      }
+    }, 400);
   }
 
   function saveEntry(entry) {
@@ -1312,30 +1123,23 @@ export default function FocusScreen() {
     const catObj = categories.find(c => c.key === entry.category);
     const isUnproductive = catObj?.subtype === 'unproductive';
 
-    let basePoints = 0;
-    let baseDeduction = 0;
-
     if (isExisting) {
       updateEntry(entry);
     } else {
       addEntry(entry);
-      if (isUnproductive) {
-        baseDeduction = entry.minutes;
-      } else {
-        basePoints = calculateDiminishingPoints(entry.minutes);
-      }
+      // Add a short delay to ensure the manual entry modal is closed
+      setTimeout(() => {
+        const diceCount = getFocusDiceCount(entry.minutes);
+        if (isUnproductive) {
+          setPendingPenalty({ minutes: entry.minutes, diceCount });
+        } else {
+          setPendingFocusReward({ minutes: entry.minutes, diceCount });
+        }
+      }, 400);
     }
 
     setEditEntry(null);
     setShowAddModal(false);
-
-    if (baseDeduction > 0) {
-      setTimeout(() => setPendingPenalty({ minutes: entry.minutes, baseDeduction }), 300);
-    } else if (entry.minutes > 0) {
-      setTimeout(() => {
-        setPendingFocusReward({ minutes: entry.minutes, basePoints });
-      }, 300);
-    }
   }
 
   function handleDeleteEntry(id) {
@@ -1528,26 +1332,41 @@ export default function FocusScreen() {
           <Modal visible transparent animationType="fade">
             <View style={styles.confirmOverlay}>
               <View style={styles.confirmBox}>
-                <Text style={styles.confirmTitle}>Log Focus Time?</Text>
-                <Text style={styles.confirmText}>
-                  Log {fmtDuration(Math.floor(pendingLog.seconds / 60))} for {categories.find(c => c.key === pendingLog.category)?.label}?
-                </Text>
+                <View style={[styles.confirmHeader, { backgroundColor: categories.find(c => c.key === pendingLog.category)?.color + '15' }]}>
+                  <Ionicons 
+                    name={categories.find(c => c.key === pendingLog.category)?.icon || 'timer'} 
+                    size={28} 
+                    color={categories.find(c => c.key === pendingLog.category)?.color || colors.primary} 
+                  />
+                  <Text style={[styles.confirmTitle, { color: categories.find(c => c.key === pendingLog.category)?.color || colors.primary }]}>
+                    Session Complete
+                  </Text>
+                </View>
 
-                <TextInput
-                  style={styles.confirmInput}
-                  placeholder="Add a note (optional)..."
-                  placeholderTextColor="#9ca3af"
-                  value={pendingNote}
-                  onChangeText={setPendingNote}
-                  autoFocus={false}
-                />
+                <View style={styles.confirmBody}>
+                  <Text style={styles.confirmText}>
+                    You focused for <Text style={{ fontWeight: '800', color: '#111827' }}>{fmtDuration(Math.floor(pendingLog.seconds / 60))}</Text> on {categories.find(c => c.key === pendingLog.category)?.label}.
+                  </Text>
+
+                  <TextInput
+                    style={styles.confirmInput}
+                    placeholder="What did you accomplish?"
+                    placeholderTextColor="#9ca3af"
+                    value={pendingNote}
+                    onChangeText={setPendingNote}
+                    multiline
+                  />
+                </View>
 
                 <View style={styles.confirmActions}>
                   <TouchableOpacity style={styles.confirmCancel} onPress={() => setPendingLog(null)}>
-                    <Text style={styles.confirmCancelText}>Later</Text>
+                    <Text style={styles.confirmCancelText}>Discard</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.confirmLog} onPress={handleLogConfirmed}>
-                    <Text style={styles.confirmLogText}>Log & Reset</Text>
+                  <TouchableOpacity 
+                    style={[styles.confirmLog, { backgroundColor: categories.find(c => c.key === pendingLog.category)?.color || colors.primary }]} 
+                    onPress={handleLogConfirmed}
+                  >
+                    <Text style={styles.confirmLogText}>Claim Rewards</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -2047,26 +1866,19 @@ export default function FocusScreen() {
         }}
       />
 
-      <FocusRewardModal
+      <FocusRollModal
         visible={!!pendingFocusReward}
-        minutes={pendingFocusReward?.minutes || 0}
-        basePoints={pendingFocusReward?.basePoints || 0}
+        rolls={pendingFocusReward?.diceCount || 0}
+        mode="reward"
         onClose={() => setPendingFocusReward(null)}
-        onClaim={(pts) => {
-          addReward(pts, Math.floor(pts / 4)); // XP is half of original points logic (1/4 of total now)
-          setPendingFocusReward(null);
-        }}
+        onFinish={() => setPendingFocusReward(null)}
       />
 
-      <UnproductivePenaltyModal
+      <UnproductiveRollModal
         visible={!!pendingPenalty}
-        minutes={pendingPenalty?.minutes || 0}
-        baseDeduction={pendingPenalty?.baseDeduction || 0}
+        rolls={pendingPenalty?.diceCount || 0}
         onClose={() => setPendingPenalty(null)}
-        onDeduct={(pts) => {
-          removeReward(pts, 0); // Only deduct spendable points, no XP
-          setPendingPenalty(null);
-        }}
+        onFinish={() => setPendingPenalty(null)}
       />
 
       <GoalSettingModal
@@ -2247,64 +2059,87 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  confirmBox: {
-    width: '85%',
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  confirmTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.textPrimary,
+  confirmHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     marginBottom: 8,
   },
+  confirmBody: {
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+  },
+  confirmTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: colors.textPrimary,
+  },
   confirmText: {
-    fontSize: 15,
+    fontSize: 16,
     color: colors.textSecondary,
-    marginBottom: 16,
-    lineHeight: 20,
+    marginBottom: 20,
+    lineHeight: 22,
   },
   confirmInput: {
     backgroundColor: '#f9fafb',
     borderWidth: 1,
     borderColor: '#e5e7eb',
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 14,
+    borderRadius: 16,
+    padding: 16,
+    fontSize: 15,
     color: colors.textPrimary,
-    marginBottom: 20,
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  confirmBox: {
+    width: '90%',
+    maxWidth: 400,
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
   },
   confirmActions: {
     flexDirection: 'row',
+    padding: 20,
     gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
   },
   confirmCancel: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: '#f3f4f6',
+    paddingVertical: 16,
+    borderRadius: 14,
+    backgroundColor: '#f9fafb',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
   confirmCancelText: {
     fontSize: 15,
     fontWeight: '700',
-    color: colors.textSecondary,
+    color: colors.textMuted,
   },
   confirmLog: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
+    flex: 2,
+    paddingVertical: 16,
+    borderRadius: 14,
     backgroundColor: colors.primary,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   confirmLogText: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
     color: '#fff',
   },
   settingsBtn: {
