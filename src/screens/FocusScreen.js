@@ -1049,7 +1049,8 @@ export default function FocusScreen() {
   const [pendingFocusReward, setPendingFocusReward] = useState(null); // { minutes, basePoints }
   const [pendingPenalty, setPendingPenalty] = useState(null); // { minutes, baseDeduction }
   const intervalRef = useRef(null);
-  const scrollRef = useRef(null);
+  const mainScrollRef = useRef(null);
+  const galleryRef = useRef(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
   // Re-render every second to update all active timers
@@ -1244,7 +1245,7 @@ export default function FocusScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       <ScrollView
-        ref={scrollRef}
+        ref={mainScrollRef}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         onScroll={handleScroll}
@@ -1399,13 +1400,11 @@ export default function FocusScreen() {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.galleryList}
-            snapToInterval={windowWidth - 20}
             snapToAlignment="start"
             decelerationRate="fast"
             disableIntervalMomentum={Platform.OS === 'web'}
-            ref={ref => {
-              scrollRef.current = ref;
-            }}
+            ref={galleryRef}
+            style={Platform.OS === 'web' ? { scrollSnapType: 'x mandatory' } : null}
           >
             {Array.from({ length: 30 }, (_, i) => {
               const date = new Date();
@@ -1416,7 +1415,14 @@ export default function FocusScreen() {
               const isToday = i === 0;
 
               return (
-                <View key={i} style={[styles.historyCard, { width: windowWidth - 40 }]}>
+                <View 
+                  key={i} 
+                  style={[
+                    styles.historyCard, 
+                    { width: windowWidth - 40 },
+                    Platform.OS === 'web' && { scrollSnapAlign: 'center' }
+                  ]}
+                >
                   <View style={styles.todayTop}>
                     <View>
                       <Text style={styles.todayLabel}>{isToday ? 'Today' : fmtDate(date)}</Text>
@@ -1836,8 +1842,8 @@ export default function FocusScreen() {
                   key={idx}
                   style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}
                   onPress={() => {
-                    if (scrollRef.current) {
-                      scrollRef.current.scrollTo({ x: idx * (windowWidth - 20), animated: true });
+                    if (galleryRef.current) {
+                      galleryRef.current.scrollTo({ x: idx * (windowWidth - 20), animated: true });
                     }
                     setShowDatePicker(false);
                   }}
@@ -1857,7 +1863,7 @@ export default function FocusScreen() {
         onSave={(newCats) => { setCategories(newCats); setShowCatModal(false); }}
         onClose={() => setShowCatModal(false)}
       />
-      {showScrollTop && <ScrollToTop scrollRef={scrollRef} />}
+      {showScrollTop && <ScrollToTop scrollRef={mainScrollRef} />}
 
       <FocusImportModal
         visible={showImport}
