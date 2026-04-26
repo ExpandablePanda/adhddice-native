@@ -181,7 +181,7 @@ function LogoHeaderLeft() {
           height: 80,       // <--- Original x 1.25
           width: 350,       // <--- Original x 1.25
           marginLeft: -110, // <--- Adjusted for extra width
-          marginTop: -10,   // <--- Move logo up/down
+          marginTop: 10,    // <--- Lowered from -10 to 10
           backgroundColor: 'transparent',
           resizeMode: 'contain'
         }}

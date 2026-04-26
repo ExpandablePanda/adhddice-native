@@ -1820,7 +1820,7 @@ function LateNightCatchUp({ tasks, onConfirmStatus }) {
         It's after midnight! Want to close out yesterday's tasks before the 6 AM rollover?
       </Text>
 
-      <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
+      <ScrollView style={{ maxHeight: 200 }} contentContainerStyle={{ paddingRight: 20 }} nestedScrollEnabled>
         {unfinished.map(t => (
           <View key={t.id} style={[styles.fydItem, { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }]}>
             <View style={{ flex: 1 }}>
