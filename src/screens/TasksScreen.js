@@ -2929,7 +2929,7 @@ export default function TasksScreen() {
                 </TouchableOpacity>
               );
             })()}
-            {['active', 'pending', 'upcoming', 'missed'].map(s => {
+            {['active', 'pending', 'upcoming', 'not_due', 'missed'].map(s => {
               const cfg = STATUSES[s];
               const active = filterStatus.includes(s);
               const count = tasks.filter(t => t.status === s).length;
