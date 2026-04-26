@@ -550,14 +550,36 @@ export default function SettingsScreen() {
 
         <Text style={styles.sectionLabel}>Credits & License</Text>
         <View style={styles.card}>
-          <View style={[styles.cardRow, styles.cardRowLast]}>
+          <View style={styles.cardRow}>
             <View style={[styles.iconBox, { backgroundColor: '#f3f4f6' }]}>
               <Ionicons name="cube-outline" size={20} color={colors.textPrimary} />
             </View>
             <View style={styles.rowBody}>
-              <Text style={styles.rowTitle}>3D Dice Model</Text>
-              <Text style={styles.rowDesc}>"D20 Dice" by VertexDon</Text>
-              <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>Licensed under CC BY-SA 4.0</Text>
+              <Text style={styles.rowTitle}>3D D20 Model</Text>
+              <Text style={styles.rowDesc}>"D20 Dice (W20 Würfel)" by VertexDon</Text>
+              <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>Licensed under CC BY-SA 4.0 via Sketchfab</Text>
+            </View>
+          </View>
+
+          <View style={styles.cardRow}>
+            <View style={[styles.iconBox, { backgroundColor: '#fef3c7' }]}>
+              <Ionicons name="dice-outline" size={20} color={colors.amber} />
+            </View>
+            <View style={styles.rowBody}>
+              <Text style={styles.rowTitle}>3D D6 Model</Text>
+              <Text style={styles.rowDesc}>"Dice" by juliov.cg</Text>
+              <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>Licensed under CC BY 4.0 via Sketchfab</Text>
+            </View>
+          </View>
+
+          <View style={[styles.cardRow, styles.cardRowLast]}>
+            <View style={[styles.iconBox, { backgroundColor: '#e0e7ff' }]}>
+              <Ionicons name="albums-outline" size={20} color={colors.primary} />
+            </View>
+            <View style={styles.rowBody}>
+              <Text style={styles.rowTitle}>3D Playing Cards</Text>
+              <Text style={styles.rowDesc}>"Four Cards Sun And Moon" by DivineDragons</Text>
+              <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>Licensed under CC BY 4.0 via Sketchfab</Text>
             </View>
           </View>
         </View>

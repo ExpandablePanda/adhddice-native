@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, Modal, TouchableOpacity, Animated, Easing } fro
 import { Ionicons } from '@expo/vector-icons';
 import { useAudioPlayer } from 'expo-audio';
 import { useEconomy } from '../lib/EconomyContext';
-import { useTasks } from '../lib/TasksContext';
+import { useTasks, calculateTaskMissedStreak } from '../lib/TasksContext';
+import { useSettings } from '../lib/SettingsContext';
 import { colors } from '../theme';
 import Dice3D from './Dice3D';
 
@@ -19,6 +20,7 @@ const OPTIONS = [
 export default function TaskResultModal({ visible, task, onClose, onComplete }) {
   const { addReward } = useEconomy();
   const { startBreak } = useTasks();
+  const { dayStartTime } = useSettings();
   const [step, setStep] = useState('select'); // select | roll | result
   const [selectedOpt, setSelectedOpt] = useState(null);
   const [baseRoll, setBaseRoll] = useState(1);
@@ -131,10 +133,24 @@ export default function TaskResultModal({ visible, task, onClose, onComplete }) 
               
               {!task?._isBulk && (
                 <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 12 }}>
-                  <View style={{ backgroundColor: '#f0fdf4', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Text style={{ fontSize: 14 }}>🔥</Text>
-                    <Text style={{ fontSize: 12, fontWeight: '800', color: '#059669' }}>{task?.streak || 0} Day Streak</Text>
-                  </View>
+                  {(task?.streak || 0) > 0 && (
+                    <View style={{ backgroundColor: '#f0fdf4', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Text style={{ fontSize: 14 }}>🔥</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#059669' }}>{task.streak} Day Streak</Text>
+                    </View>
+                  )}
+                  {(() => {
+                    const missed = calculateTaskMissedStreak(task?.statusHistory || {}, dayStartTime, task?.frequency !== null);
+                    if (missed > 0) {
+                      return (
+                        <View style={{ backgroundColor: '#fef2f2', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Text style={{ fontSize: 14 }}>💀</Text>
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: '#dc2626' }}>{missed} Day Missed</Text>
+                        </View>
+                      );
+                    }
+                    return null;
+                  })()}
                 </View>
               )}
 

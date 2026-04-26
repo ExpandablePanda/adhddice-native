@@ -7,21 +7,21 @@ import { supabase } from './supabase';
 const FocusContext = createContext();
 
 export const DEFAULT_CATEGORIES = [
-  { key: 'work',        label: 'Work',          color: '#4f46e5', icon: 'briefcase-outline', nature: 'productive', subtype: null },
-  { key: 'lamprey',     label: 'Lamprey (Work)',color: '#4338ca', icon: 'flash-outline',     nature: 'productive', subtype: null },
-  { key: 'study',       label: 'Study',         color: '#0891b2', icon: 'book-outline',      nature: 'productive', subtype: null },
-  { key: 'learning',    label: 'Learning',      color: '#0e7490', icon: 'school-outline',    nature: 'productive', subtype: null },
-  { key: 'creative',    label: 'Creative',      color: '#7c3aed', icon: 'color-palette-outline', nature: 'productive', subtype: null },
-  { key: 'exercise',    label: 'Exercise',      color: '#059669', icon: 'fitness-outline',    nature: 'productive', subtype: null },
-  { key: 'chores',      label: 'Chores',        color: '#d97706', icon: 'home-outline',       nature: 'productive', subtype: null },
-  { key: 'tcg',         label: 'TCG (Social)',  color: '#be185d', icon: 'people-outline',    nature: 'entertainment', subtype: null },
-  { key: 'music',       label: 'Music (Ent.)',  color: '#db2777', icon: 'musical-notes-outline', nature: 'entertainment', subtype: null },
-  { key: 'entertainment',label: 'Entertainment', color: '#c026d3', icon: 'tv-outline',        nature: 'entertainment', subtype: null },
-  { key: 'doomscrolling',label: 'Doomscrolling', color: '#4b5563', icon: 'skull-outline',    nature: 'entertainment', subtype: 'unproductive' },
-  { key: 'social',      label: 'Social',        color: '#e11d48', icon: 'chatbubble-outline', nature: 'entertainment', subtype: null },
-  { key: 'personal',    label: 'Personal',      color: '#ec4899', icon: 'person-outline',     nature: 'entertainment', subtype: null },
-  { key: 'sleep',       label: 'Sleep',         color: '#3b82f6', icon: 'moon-outline',       nature: 'sleep', subtype: null },
-  { key: 'other',       label: 'Other',         color: '#6b7280', icon: 'ellipsis-horizontal-outline', nature: 'entertainment', subtype: null },
+  { key: 'work',        label: 'Work',          color: '#4f46e5', icon: 'briefcase-outline', nature: 'work', subtype: 'paid' },
+  { key: 'lamprey',     label: 'Lamprey (Work)',color: '#4338ca', icon: 'flash-outline',     nature: 'work', subtype: 'productive' },
+  { key: 'study',       label: 'Study',         color: '#0891b2', icon: 'book-outline',      nature: 'work', subtype: 'productive' },
+  { key: 'learning',    label: 'Learning',      color: '#0e7490', icon: 'school-outline',    nature: 'work', subtype: 'productive' },
+  { key: 'creative',    label: 'Creative',      color: '#7c3aed', icon: 'color-palette-outline', nature: 'personal', subtype: 'productive' },
+  { key: 'exercise',    label: 'Exercise',      color: '#059669', icon: 'fitness-outline',    nature: 'personal', subtype: 'productive' },
+  { key: 'chores',      label: 'Chores',        color: '#d97706', icon: 'home-outline',       nature: 'personal', subtype: 'productive' },
+  { key: 'tcg',         label: 'TCG (Social)',  color: '#be185d', icon: 'people-outline',    nature: 'entertainment', subtype: 'comfort' },
+  { key: 'music',       label: 'Music (Ent.)',  color: '#db2777', icon: 'musical-notes-outline', nature: 'entertainment', subtype: 'comfort' },
+  { key: 'entertainment',label: 'Entertainment', color: '#c026d3', icon: 'tv-outline',        nature: 'entertainment', subtype: 'comfort' },
+  { key: 'doomscrolling',label: 'Doomscrolling', color: '#4b5563', icon: 'skull-outline',    nature: 'entertainment', subtype: 'comfort' },
+  { key: 'social',      label: 'Social',        color: '#e11d48', icon: 'chatbubble-outline', nature: 'entertainment', subtype: 'comfort' },
+  { key: 'personal',    label: 'Personal',      color: '#ec4899', icon: 'person-outline',     nature: 'personal', subtype: 'productive' },
+  { key: 'sleep',       label: 'Sleep',         color: '#3b82f6', icon: 'moon-outline',       nature: 'sleep', subtype: 'productive' },
+  { key: 'other',       label: 'Other',         color: '#6b7280', icon: 'ellipsis-horizontal-outline', nature: 'personal', subtype: 'productive' },
 ];
 
 export function FocusProvider({ children }) {
@@ -77,11 +77,17 @@ export function FocusProvider({ children }) {
           let parsed = JSON.parse(storedCats);
           // MIGRATION: Map isProductive to nature
           parsed = parsed.map(c => {
-            if (c.nature) return c;
-            return {
-              ...c,
-              nature: c.isProductive ? 'productive' : 'entertainment'
-            };
+            const label = (c.label || '').toLowerCase();
+            let n = c.nature;
+            // Map old natures to new branches
+            if (n === 'productive' || !n) {
+              n = label.includes('work') ? 'work' : 'personal';
+            }
+            if (n === 'sleep' && !c.subtype) return { ...c, nature: 'sleep', subtype: 'productive' };
+            if (n === 'entertainment' && !c.subtype) return { ...c, nature: 'entertainment', subtype: 'comfort' };
+            if (n === 'work' && !c.subtype) return { ...c, nature: 'work', subtype: 'paid' };
+            if (n === 'personal' && !c.subtype) return { ...c, nature: 'personal', subtype: 'productive' };
+            return { ...c, nature: n };
           });
           setCategories(parsed); 
         } catch(e) {}

@@ -362,6 +362,10 @@ function EntryModal({ visible, entry, onSave, onDelete, onClose, categories }) {
   const [mins, setMins] = useState('');
   const [date, setDate] = useState(new Date());
   const [note, setNote] = useState('');
+  const [topLevel, setTopLevel] = useState('work'); // 'work' | 'personal' | 'entertainment'
+  const [isPaid, setIsPaid] = useState(false);
+  const [isProductive, setIsProductive] = useState(true);
+  const [subtype, setSubtype] = useState('productive');
   const [showCalendar, setShowCalendar] = useState(false);
 
   useEffect(() => {
@@ -372,12 +376,18 @@ function EntryModal({ visible, entry, onSave, onDelete, onClose, categories }) {
       setMins(String(totalMin % 60 || (totalMin < 60 ? totalMin : 0)));
       setDate(entry.date ? new Date(entry.date) : new Date());
       setNote(entry.note || '');
+      setTopLevel(entry.topLevel || 'work');
+      setIsPaid(!!entry.isPaid);
+      setIsProductive(entry.isProductive !== false);
     } else if (visible) {
       setCategory('work');
       setHours('');
       setMins('');
       setDate(new Date());
       setNote('');
+      setTopLevel('work');
+      setIsPaid(false);
+      setIsProductive(true);
     }
   }, [visible, entry]);
 
@@ -396,6 +406,10 @@ function EntryModal({ visible, entry, onSave, onDelete, onClose, categories }) {
       minutes: totalMin,
       date,
       note,
+      topLevel,
+      isPaid,
+      isProductive,
+      subtype,
     });
   }
 
@@ -484,6 +498,117 @@ function EntryModal({ visible, entry, onSave, onDelete, onClose, categories }) {
                 <Text style={styles.quickDurText}>{fmtDuration(m)}</Text>
               </TouchableOpacity>
             ))}
+          </View>
+          
+          <Text style={styles.fieldLabel}>Nature Branch</Text>
+          <View style={styles.confirmNatureBox}>
+            <View style={styles.natureRow}>
+              {['work', 'personal'].map(branch => (
+                <TouchableOpacity 
+                  key={branch}
+                  style={[styles.natureBtn, topLevel === branch && styles.natureBtnActiveBranch]}
+                  onPress={() => {
+                    setTopLevel(branch);
+                    if (branch === 'work') setIsProductive(true);
+                  }}
+                >
+                  <Text style={[styles.natureBtnText, topLevel === branch && styles.natureBtnTextActive]} numberOfLines={1}>
+                    {branch.charAt(0).toUpperCase() + branch.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.natureRow}>
+              {['entertainment', 'sleep'].map(branch => (
+                <TouchableOpacity 
+                  key={branch}
+                  style={[styles.natureBtn, topLevel === branch && styles.natureBtnActiveBranch]}
+                  onPress={() => {
+                    setTopLevel(branch);
+                  }}
+                >
+                  <Text style={[styles.natureBtnText, topLevel === branch && styles.natureBtnTextActive]} numberOfLines={1}>
+                    {branch.charAt(0).toUpperCase() + branch.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={{ marginTop: 12 }}>
+              {topLevel === 'work' ? (
+                <View style={styles.natureRow}>
+                  <TouchableOpacity 
+                    style={[styles.natureBtn, isPaid && styles.natureBtnActivePaid]}
+                    onPress={() => setIsPaid(true)}
+                  >
+                    <Text style={[styles.natureBtnText, isPaid && styles.natureBtnTextActive]}>Paid</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.natureBtn, !isPaid && styles.natureBtnActive]}
+                    onPress={() => setIsPaid(false)}
+                  >
+                    <Text style={[styles.natureBtnText, !isPaid && styles.natureBtnTextActive]}>Productive</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : topLevel === 'entertainment' ? (
+                <View style={styles.natureRow}>
+                  <TouchableOpacity 
+                    style={[styles.natureBtn, subtype === 'new' && styles.natureBtnActiveUnproductive]}
+                    onPress={() => setSubtype('new')}
+                  >
+                    <Text style={[styles.natureBtnText, subtype === 'new' && styles.natureBtnTextActive]}>New</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.natureBtn, subtype === 'comfort' && styles.natureBtnActiveUnproductive]}
+                    onPress={() => setSubtype('comfort')}
+                  >
+                    <Text style={[styles.natureBtnText, subtype === 'comfort' && styles.natureBtnTextActive]}>Comfort</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.natureRow}>
+                  <TouchableOpacity 
+                    style={[styles.natureBtn, isProductive && styles.natureBtnActive]}
+                    onPress={() => setIsProductive(true)}
+                  >
+                    <Text style={[styles.natureBtnText, isProductive && styles.natureBtnTextActive]}>
+                      {topLevel === 'entertainment' ? 'New' : (topLevel === 'sleep' ? 'Rest' : 'Productive')}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.natureBtn, !isProductive && styles.natureBtnActiveUnproductive]}
+                    onPress={() => {
+                      setIsProductive(false);
+                      if (subtype === 'productive') setSubtype('comfort');
+                    }}
+                  >
+                    <Text style={[styles.natureBtnText, !isProductive && styles.natureBtnTextActive]}>
+                      {topLevel === 'entertainment' ? 'Comfort' : (topLevel === 'sleep' ? 'Overslept' : 'Unproductive')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+
+            {/* Level 3: Unproductive Flavors */}
+            {(topLevel === 'personal' || topLevel === 'sleep') && !isProductive && (
+              <View style={{ marginTop: 12 }}>
+                <View style={styles.natureRow}>
+                  <TouchableOpacity 
+                    style={[styles.natureBtn, subtype === 'new' && styles.natureBtnActiveUnproductive]}
+                    onPress={() => setSubtype('new')}
+                  >
+                    <Text style={[styles.natureBtnText, subtype === 'new' && styles.natureBtnTextActive]}>New</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.natureBtn, subtype === 'comfort' && styles.natureBtnActiveUnproductive]}
+                    onPress={() => setSubtype('comfort')}
+                  >
+                    <Text style={[styles.natureBtnText, subtype === 'comfort' && styles.natureBtnTextActive]}>Comfort</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
           </View>
 
           <TouchableOpacity
@@ -612,10 +737,12 @@ function CategoryManagerModal({ visible, categories, onClose, onSave }) {
     setDrafts([...drafts, { key: 'cat_' + Date.now(), label: 'New Category', icon: 'star-outline', color: '#6366f1' }]);
   }
 
-  function updateCat(idx, field, val) {
-    const next = [...drafts];
-    next[idx] = { ...next[idx], [field]: val };
-    setDrafts(next);
+  function updateCat(idx, updates) {
+    setDrafts(prev => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], ...updates };
+      return next;
+    });
   }
 
   function removeCat(idx) {
@@ -669,7 +796,7 @@ function CategoryManagerModal({ visible, categories, onClose, onSave }) {
                   <TextInput
                     style={[styles.fieldInput, { flex: 1, height: 44 }]}
                     value={cat.label}
-                    onChangeText={(v) => updateCat(idx, 'label', v)}
+                    onChangeText={(v) => updateCat(idx, { label: v })}
                     placeholder="Category Name"
                   />
 
@@ -682,14 +809,17 @@ function CategoryManagerModal({ visible, categories, onClose, onSave }) {
                   <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 }}>Focus Type</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
                     {[
-                      { key: 'productive', label: 'Productive', icon: 'flash', color: '#10b981' },
-                      { key: 'paid', label: 'Paid', icon: 'cash', color: '#3b82f6' },
+                      { key: 'work', label: 'Work', icon: 'briefcase', color: '#4f46e5' },
+                      { key: 'personal', label: 'Personal', icon: 'person', color: '#10b981' },
                       { key: 'entertainment', label: 'Entertainment', icon: 'tv', color: '#ef4444' },
                       { key: 'sleep', label: 'Sleep', icon: 'moon', color: '#7c3aed' },
                     ].map(t => (
                       <TouchableOpacity
                         key={t.key}
-                        onPress={() => updateCat(idx, 'nature', t.key)}
+                        onPress={() => {
+                          const defaultSub = t.key === 'work' ? 'paid' : (t.key === 'entertainment' ? 'new' : (t.key === 'sleep' ? 'rested' : 'productive'));
+                          updateCat(idx, { nature: t.key, subtype: defaultSub });
+                        }}
                         style={{
                           paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8,
                           backgroundColor: cat.nature === t.key ? t.color : '#f3f4f6',
@@ -702,37 +832,53 @@ function CategoryManagerModal({ visible, categories, onClose, onSave }) {
                     ))}
                   </View>
 
-                  {cat.nature === 'entertainment' && (
-                    <>
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 }}>Subtype</Text>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                        {[
-                          { key: null, label: 'Standard', icon: 'star', color: '#6b7280' },
-                          { key: 'unproductive', label: 'Unproductive', icon: 'skull', color: '#ef4444' },
-                        ].map(s => (
-                          <TouchableOpacity
-                            key={String(s.key)}
-                            onPress={() => updateCat(idx, 'subtype', s.key)}
-                            style={{
-                              paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8,
-                              backgroundColor: (cat.subtype === s.key || (cat.subtype === undefined && s.key === null)) ? s.color : '#f3f4f6',
-                              flexDirection: 'row', alignItems: 'center', gap: 4
-                            }}
-                          >
-                            <Ionicons name={s.icon} size={10} color={(cat.subtype === s.key || (cat.subtype === undefined && s.key === null)) ? '#fff' : s.color} />
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: (cat.subtype === s.key || (cat.subtype === undefined && s.key === null)) ? '#fff' : '#6b7280' }}>{s.label}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </>
-                  )}
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 }}>Subtype</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                    {(() => {
+                      let subs = [
+                        { key: 'productive', label: 'Productive', icon: 'flash', color: '#10b981' },
+                        { key: 'unproductive', label: 'Unproductive', icon: 'skull', color: '#ef4444' },
+                      ];
+                      if (cat.nature === 'work') {
+                        subs = [
+                          { key: 'paid', label: 'Paid', icon: 'cash', color: '#3b82f6' },
+                          { key: 'productive', label: 'Productive', icon: 'flash', color: '#10b981' },
+                        ];
+                      } else if (cat.nature === 'entertainment') {
+                        subs = [
+                          { key: 'new', label: 'New', icon: 'sparkles', color: '#f59e0b' },
+                          { key: 'comfort', label: 'Comfort', icon: 'refresh', color: '#6b7280' },
+                        ];
+                      } else if (cat.nature === 'sleep') {
+                        subs = [
+                          { key: 'rest', label: 'Rest', icon: 'sunny', color: '#10b981' },
+                          { key: 'overslept', label: 'Overslept', icon: 'moon', color: '#ef4444' },
+                        ];
+                      }
+                      
+                      return subs.map(s => (
+                        <TouchableOpacity
+                          key={s.key}
+                          onPress={() => updateCat(idx, { subtype: s.key })}
+                          style={{
+                            paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8,
+                            backgroundColor: cat.subtype === s.key ? s.color : '#f3f4f6',
+                            flexDirection: 'row', alignItems: 'center', gap: 4
+                          }}
+                        >
+                          <Ionicons name={s.icon} size={10} color={cat.subtype === s.key ? '#fff' : s.color} />
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: cat.subtype === s.key ? '#fff' : '#6b7280' }}>{s.label}</Text>
+                        </TouchableOpacity>
+                      ));
+                    })()}
+                  </View>
 
                   <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 }}>Category Color</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
                     {CATEGORY_COLORS.map(c => (
                       <TouchableOpacity
                         key={c}
-                        onPress={() => updateCat(idx, 'color', c)}
+                        onPress={() => updateCat(idx, { color: c })}
                         style={{
                           width: 24,
                           height: 24,
@@ -761,7 +907,7 @@ function CategoryManagerModal({ visible, categories, onClose, onSave }) {
         <IconPickerModal
           visible={pickerIdx !== null}
           current={drafts[pickerIdx]?.icon}
-          onSelect={(iconName) => updateCat(pickerIdx, 'icon', iconName)}
+          onSelect={(iconName) => updateCat(pickerIdx, { icon: iconName })}
           onClose={() => setPickerIdx(null)}
         />
       )}
@@ -1045,6 +1191,10 @@ export default function FocusScreen() {
   const [showReorder, setShowReorder] = useState(false);
   const [adjustingKey, setAdjustingKey] = useState(null);
   const [pendingNote, setPendingNote] = useState('');
+  const [pendingTopLevel, setPendingTopLevel] = useState('work'); // 'work' | 'personal' | 'entertainment'
+  const [pendingPaid, setPendingPaid] = useState('unpaid'); // 'paid' | 'unpaid'
+  const [pendingProductive, setPendingProductive] = useState(true);
+  const [pendingSubtype, setPendingSubtype] = useState('productive');
   const [statsPeriod, setStatsPeriod] = useState('week');
   const [pendingFocusReward, setPendingFocusReward] = useState(null); // { minutes, basePoints }
   const [pendingPenalty, setPendingPenalty] = useState(null); // { minutes, baseDeduction }
@@ -1052,6 +1202,35 @@ export default function FocusScreen() {
   const mainScrollRef = useRef(null);
   const galleryRef = useRef(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
+
+  useEffect(() => {
+    if (pendingLog) {
+      const cat = categories.find(c => c.key === pendingLog.category);
+      const nature = cat?.nature || 'productive';
+      
+      if (nature === 'productive' || nature === 'work') {
+        setPendingTopLevel('work');
+        setPendingProductive(true);
+        if (cat.subtype === 'paid') setPendingPaid('paid');
+        else if (cat.subtype === 'productive') setPendingPaid('unpaid');
+        else setPendingPaid(cat.key === 'work' || cat.key === 'lamprey' ? 'paid' : 'unpaid');
+      } else {
+        setPendingTopLevel(nature === 'sleep' ? 'sleep' : (nature === 'entertainment' ? 'entertainment' : 'personal'));
+        if (cat.nature === 'entertainment') {
+           setPendingProductive(false);
+           setPendingSubtype(cat.subtype || 'comfort');
+        } else if (cat.nature === 'sleep') {
+           setPendingProductive(cat.subtype === 'rest');
+           setPendingSubtype(cat.subtype || 'rest');
+        } else {
+           setPendingProductive(cat?.subtype !== 'unproductive');
+           setPendingSubtype(cat.subtype || 'productive');
+        }
+        setPendingPaid('unpaid');
+      }
+      setPendingNote('');
+    }
+  }, [pendingLog, categories]);
 
   // Re-render every second to update all active timers
   const [, setTick] = useState(0);
@@ -1104,11 +1283,16 @@ export default function FocusScreen() {
       minutes,
       date: new Date(),
       note: pendingNote,
+      topLevel: pendingTopLevel,
+      isPaid: pendingPaid === 'paid',
+      isProductive: pendingProductive,
+      subtype: pendingSubtype,
     };
     addEntry(newEntry);
     resetTimer(category);
     setPendingLog(null);
     setPendingNote('');
+    setPendingPaid('personal');
 
     // Add a short delay to ensure the confirmation modal is closed before showing the 3D dice
     setTimeout(() => {
@@ -1204,8 +1388,21 @@ export default function FocusScreen() {
       const dKey = fmtDate(e.date);
       if (!dayMap[dKey]) dayMap[dKey] = { productive: 0, paid: 0, entertainment: 0, unproductive: 0, sleep: 0 };
       const cat = categories.find(c => c.key === e.category) || { label: 'Deleted', color: '#94a3b8' };
+      
       let nature = cat.nature || (cat.isProductive ? 'productive' : 'entertainment');
       if (cat.subtype === 'unproductive') nature = 'unproductive';
+      
+      // Override with entry-specific branches if present
+      if (e.topLevel === 'work') {
+        nature = e.isPaid ? 'paid' : 'productive';
+      } else if (e.topLevel === 'personal') {
+        nature = e.isProductive ? 'productive' : 'unproductive';
+      } else if (e.topLevel === 'entertainment') {
+        nature = 'entertainment';
+      } else if (e.topLevel === 'sleep') {
+        nature = e.isProductive || e.subtype === 'rest' ? 'sleep' : 'unproductive';
+      }
+
       dayMap[dKey][nature] += Number(e.minutes || 0);
     });
 
@@ -1281,17 +1478,22 @@ export default function FocusScreen() {
               return (
                 <View key={key} style={styles.clockWrapper}>
                   <TouchableOpacity
-                    style={[styles.clockCircle, { borderColor: isRunning ? cat.color : colors.border }]}
+                    style={[
+                      styles.clockCircle, 
+                      { borderColor: isRunning ? cat.color : colors.border },
+                      isRunning && { backgroundColor: cat.color, shadowOpacity: 0.2, shadowRadius: 15 }
+                    ]}
                     onPress={() => handleTimerClick(cat)}
                     onLongPress={() => setAdjustingKey(key)}
                     delayLongPress={500}
+                    activeOpacity={0.7}
                   >
-                    <Ionicons name={cat.icon} size={24} color={isRunning ? cat.color : colors.textMuted} />
-                    <Text style={[styles.clockTimer, isRunning && { color: cat.color }]}>
+                    <Ionicons name={cat.icon} size={24} color={isRunning ? '#fff' : colors.textMuted} />
+                    <Text style={[styles.clockTimer, isRunning && { color: '#fff' }]}>
                       {fmtTimer(elapsed)}
                     </Text>
                     <View style={styles.clockLabelContainer}>
-                      <Text style={styles.clockLabel} numberOfLines={2}>{cat.label}</Text>
+                      <Text style={[styles.clockLabel, isRunning && { color: '#fff' }]} numberOfLines={2}>{cat.label}</Text>
                     </View>
                   </TouchableOpacity>
 
@@ -1359,17 +1561,131 @@ export default function FocusScreen() {
                     onChangeText={setPendingNote}
                     multiline
                   />
+
+                  <View style={styles.confirmNatureBox}>
+                    <Text style={styles.confirmNatureTitle}>Session Branch</Text>
+                    
+                    {/* Level 1: Branch */}
+                    <View style={styles.natureRow}>
+                      {['work', 'personal'].map(branch => (
+                        <TouchableOpacity 
+                          key={branch}
+                          style={[styles.natureBtn, pendingTopLevel === branch && styles.natureBtnActiveBranch]}
+                          onPress={() => {
+                            setPendingTopLevel(branch);
+                            if (branch === 'work') setPendingProductive(true);
+                          }}
+                        >
+                          <Text style={[styles.natureBtnText, pendingTopLevel === branch && styles.natureBtnTextActive]} numberOfLines={1}>
+                            {branch.charAt(0).toUpperCase() + branch.slice(1)}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <View style={styles.natureRow}>
+                      {['entertainment', 'sleep'].map(branch => (
+                        <TouchableOpacity 
+                          key={branch}
+                          style={[styles.natureBtn, pendingTopLevel === branch && styles.natureBtnActiveBranch]}
+                          onPress={() => {
+                            setPendingTopLevel(branch);
+                          }}
+                        >
+                          <Text style={[styles.natureBtnText, pendingTopLevel === branch && styles.natureBtnTextActive]} numberOfLines={1}>
+                            {branch.charAt(0).toUpperCase() + branch.slice(1)}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    {/* Level 2: Sub-options */}
+                    <View style={{ marginTop: 12 }}>
+                      {pendingTopLevel === 'work' ? (
+                        <View style={styles.natureRow}>
+                          <TouchableOpacity 
+                            style={[styles.natureBtn, pendingPaid === 'paid' && styles.natureBtnActivePaid]}
+                            onPress={() => setPendingPaid('paid')}
+                          >
+                            <Text style={[styles.natureBtnText, pendingPaid === 'paid' && styles.natureBtnTextActive]}>Paid</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity 
+                            style={[styles.natureBtn, pendingPaid === 'productive' && styles.natureBtnActive]}
+                            onPress={() => setPendingPaid('productive')}
+                          >
+                            <Text style={[styles.natureBtnText, pendingPaid === 'productive' && styles.natureBtnTextActive]}>Productive</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : pendingTopLevel === 'entertainment' ? (
+                        <View style={styles.natureRow}>
+                          <TouchableOpacity 
+                            style={[styles.natureBtn, pendingSubtype === 'new' && styles.natureBtnActiveUnproductive]}
+                            onPress={() => setPendingSubtype('new')}
+                          >
+                            <Text style={[styles.natureBtnText, pendingSubtype === 'new' && styles.natureBtnTextActive]}>New</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity 
+                            style={[styles.natureBtn, pendingSubtype === 'comfort' && styles.natureBtnActiveUnproductive]}
+                            onPress={() => setPendingSubtype('comfort')}
+                          >
+                            <Text style={[styles.natureBtnText, pendingSubtype === 'comfort' && styles.natureBtnTextActive]}>Comfort</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <View style={styles.natureRow}>
+                          <TouchableOpacity 
+                            style={[styles.natureBtn, pendingProductive && styles.natureBtnActive]}
+                            onPress={() => setPendingProductive(true)}
+                          >
+                            <Text style={[styles.natureBtnText, pendingProductive && styles.natureBtnTextActive]}>
+                              {pendingTopLevel === 'entertainment' ? 'New' : (pendingTopLevel === 'sleep' ? 'Rest' : 'Productive')}
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity 
+                            style={[styles.natureBtn, !pendingProductive && styles.natureBtnActiveUnproductive]}
+                            onPress={() => {
+                              setPendingProductive(false);
+                              if (!pendingSubtype || pendingSubtype === 'productive') setPendingSubtype('comfort');
+                            }}
+                          >
+                            <Text style={[styles.natureBtnText, !pendingProductive && styles.natureBtnTextActive]}>
+                              {pendingTopLevel === 'entertainment' ? 'Comfort' : (pendingTopLevel === 'sleep' ? 'Overslept' : 'Unproductive')}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Level 3: Unproductive Flavors */}
+                    {(pendingTopLevel === 'personal' || pendingTopLevel === 'sleep') && !pendingProductive && (
+                      <View style={{ marginTop: 12 }}>
+                        <View style={styles.natureRow}>
+                          <TouchableOpacity 
+                            style={[styles.natureBtn, pendingSubtype === 'new' && styles.natureBtnActiveUnproductive]}
+                            onPress={() => setPendingSubtype('new')}
+                          >
+                            <Text style={[styles.natureBtnText, pendingSubtype === 'new' && styles.natureBtnTextActive]}>New</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity 
+                            style={[styles.natureBtn, pendingSubtype === 'comfort' && styles.natureBtnActiveUnproductive]}
+                            onPress={() => setPendingSubtype('comfort')}
+                          >
+                            <Text style={[styles.natureBtnText, pendingSubtype === 'comfort' && styles.natureBtnTextActive]}>Comfort</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
+                  </View>
                 </View>
 
                 <View style={styles.confirmActions}>
                   <TouchableOpacity style={styles.confirmCancel} onPress={() => setPendingLog(null)}>
-                    <Text style={styles.confirmCancelText}>Discard</Text>
+                    <Text style={styles.confirmCancelText}>Pause</Text>
                   </TouchableOpacity>
                   <TouchableOpacity 
                     style={[styles.confirmLog, { backgroundColor: categories.find(c => c.key === pendingLog.category)?.color || colors.primary }]} 
                     onPress={handleLogConfirmed}
                   >
-                    <Text style={styles.confirmLogText}>Claim Rewards</Text>
+                    <Text style={styles.confirmLogText}>Log Time</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -2100,8 +2416,60 @@ const styles = StyleSheet.create({
     padding: 16,
     fontSize: 15,
     color: colors.textPrimary,
-    minHeight: 100,
+    minHeight: 80,
     textAlignVertical: 'top',
+  },
+  confirmNatureBox: {
+    marginTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+    paddingTop: 16,
+  },
+  confirmNatureTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#6b7280',
+    marginBottom: 10,
+    textTransform: 'uppercase',
+  },
+  natureRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  natureBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  natureBtnActive: {
+    backgroundColor: '#10b981',
+    borderColor: '#10b981',
+  },
+  natureBtnActiveUnproductive: {
+    backgroundColor: '#ef4444',
+    borderColor: '#ef4444',
+  },
+  natureBtnActivePaid: {
+    backgroundColor: '#3b82f6',
+    borderColor: '#3b82f6',
+  },
+  natureBtnActiveBranch: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  natureBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  natureBtnTextActive: {
+    color: '#fff',
+    fontWeight: '800',
   },
   confirmBox: {
     width: '90%',
