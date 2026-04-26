@@ -406,7 +406,10 @@ function FloatingNav({ tabs, state, navigation }) {
           {
             backgroundColor: isDark ? 'rgba(30, 41, 59, 0.95)' : 'rgba(255, 255, 255, 0.95)',
             borderColor: colors.border,
-            width: expanded ? '90%' : 60,
+            maxWidth: expanded ? '92%' : 60,
+            minWidth: 60,
+            alignSelf: 'center',
+            paddingHorizontal: expanded ? 6 : 0,
           }
         ]}
       >
@@ -414,7 +417,7 @@ function FloatingNav({ tabs, state, navigation }) {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={[navStyles.scrollContent, { paddingRight: 20 }]}
+            contentContainerStyle={[navStyles.scrollContent, { paddingLeft: 8, paddingRight: 12 }]}
           >
             {tabs.map(t => {
               const active = tabs[state?.index || 0]?.name === t.name;

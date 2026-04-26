@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, SectionList, FlatList, TouchableOpacity, TextInput,
   StyleSheet, Modal, KeyboardAvoidingView, Platform, Image,
-  ScrollView, Alert, Animated, RefreshControl, AppState, Linking, Switch
+  ScrollView, Alert, Animated, RefreshControl, AppState, Linking, Switch, Pressable
 } from 'react-native';
 import { useFocusEffect, useNavigation, useIsFocused } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -1785,7 +1785,7 @@ function LateNightCatchUp({ tasks, onConfirmStatus }) {
   if (unfinished.length === 0) return null;
 
   return (
-    <View style={[styles.fydBox, { borderColor: colors.amber, borderWidth: 1, backgroundColor: colors.background }]}>
+    <View style={[styles.fydBox, { borderColor: colors.amber, borderWidth: 1, backgroundColor: colors.background, zIndex: 100 }]}>
       <View style={[styles.fydHeader, { alignItems: 'center' }]}>
         <Text style={[styles.fydStepText, { color: colors.amber, marginBottom: 0 }]}>Late Night Review 🌙</Text>
         
@@ -1807,7 +1807,7 @@ function LateNightCatchUp({ tasks, onConfirmStatus }) {
             Alert.alert("Start Next Day", "Manually process missed tasks and advance the board for today?", [
               { text: "Cancel" },
               { text: "Advance Board", onPress: () => {
-                 onConfirmStatus([], 'advance_board'); 
+                 onConfirmStatus(null, 'advance_board'); 
               }}
             ]);
           }}
@@ -1820,14 +1820,13 @@ function LateNightCatchUp({ tasks, onConfirmStatus }) {
         It's after midnight! Want to close out yesterday's tasks before the 6 AM rollover?
       </Text>
 
-      
       <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
         {unfinished.map(t => (
           <View key={t.id} style={[styles.fydItem, { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }]}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.fydItemText, { fontSize: 14 }]}>{t.title}</Text>
               <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-                <Text style={{ fontSize: 10, color: colors.textMuted }}>{STATUSES[t.status].label}</Text>
+                <Text style={{ fontSize: 10, color: colors.textMuted }}>{STATUSES[t.status]?.label}</Text>
                 {(() => {
                   const isRecurring = !!t.frequency;
                   const hot = calculateTaskStreak(t.statusHistory || {}, dayStartTime, isRecurring);
@@ -1840,20 +1839,24 @@ function LateNightCatchUp({ tasks, onConfirmStatus }) {
             </View>
             <View style={{ flexDirection: 'row', gap: 6 }}>
               {['done', 'did_my_best', 'missed'].map(st => (
-                <TouchableOpacity
+                <Pressable
                   key={st}
-                  style={{
+                  style={({ pressed }) => ({
                     paddingHorizontal: 10,
                     paddingVertical: 5,
                     borderRadius: 8,
-                    backgroundColor: STATUSES[st]?.color || colors.primary
+                    backgroundColor: STATUSES[st]?.color || colors.primary,
+                    opacity: pressed ? 0.7 : 1,
+                  })}
+                  onPress={() => {
+                    console.log(`LateNightReview: Confirming ${st} for ${t.id}`);
+                    onConfirmStatus(t.id, st);
                   }}
-                  onPress={() => onConfirmStatus(t.id, st)}
                 >
                   <Text style={{ fontSize: 10, fontWeight: '700', color: '#fff' }}>
                     {STATUSES[st]?.label}
                   </Text>
-                </TouchableOpacity>
+                </Pressable>
               ))}
             </View>
           </View>

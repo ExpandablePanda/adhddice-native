@@ -387,7 +387,7 @@ export default function TaskCard3D({
               <group>
                 {/* Icon pip — pinned to right edge */}
                 <ManaPip
-                  position={[0.88 - PIP_R, 0, 0]}
+                  position={[0.80 - PIP_R, 0, 0]}
                   radius={PIP_R}
                   bgColor={showStreak ? '#f97316' : '#1f2937'}
                   borderColor={showStreak ? '#c2410c' : '#ffffff'}
@@ -396,7 +396,7 @@ export default function TaskCard3D({
                 />
                 {/* Number pip — immediately left of icon pip */}
                 <ManaPip
-                  position={[0.88 - PIP_R - 2 * PIP_R - PIP_GAP, 0, 0]}
+                  position={[0.80 - PIP_R - 2 * PIP_R - PIP_GAP, 0, 0]}
                   radius={PIP_R}
                   bgColor="#ffffff"
                   borderColor="#94a3b8"
@@ -422,14 +422,14 @@ export default function TaskCard3D({
           {/* ── BELOW TITLE: History (left) | 1 STEP (right) ── */}
           <group position={[0, -0.28, 0.12]}>
             <Chip
-              position={[-0.82 + hW / 2, 0, 0]}
+              position={[-0.76 + hW / 2, 0, 0]}
               width={hW} height={0.2}
               borderColor="#94a3b8" backgroundColor="#f1f5f9" textColor="#475569"
               maskTexture={histTex}
               onPress={interactive ? onHistoryPress : undefined}
             />
             <Chip
-              position={[0.82 - oW / 2, 0, 0]}
+              position={[0.76 - oW / 2, 0, 0]}
               width={oW} height={0.2}
               borderColor="#6366f1" backgroundColor="#e0e7ff" textColor="#4338ca"
               maskTexture={osaatTex}
@@ -442,7 +442,7 @@ export default function TaskCard3D({
             <group position={[0, -0.56, 0.12]}>
               {dueDateLabel && (
                 <Chip
-                  position={[-0.82 + dW / 2, 0, 0]}
+                  position={[-0.76 + dW / 2, 0, 0]}
                   width={dW} height={0.2}
                   borderColor="#7dd3fc" backgroundColor="#e0f2fe" textColor="#0369a1"
                   maskTexture={dueTex}
@@ -450,7 +450,7 @@ export default function TaskCard3D({
               )}
               {energyLabel && (
                 <Chip
-                  position={[0.82 - eW / 2, 0, 0]}
+                  position={[0.76 - eW / 2, 0, 0]}
                   width={eW} height={0.2}
                   borderColor={energyInfo?.color || '#94a3b8'}
                   backgroundColor={energyInfo?.bg || '#f8fafc'}
