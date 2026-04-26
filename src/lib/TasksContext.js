@@ -5,6 +5,7 @@ import { useProfile } from './ProfileContext';
 import { useSettings } from './SettingsContext';
 import { supabase } from './supabase';
 import { useEconomy } from './EconomyContext';
+import { createSafetyBackup } from './BackupManager';
 
 export const STATUSES = {
   pending:       { label: 'Pending',       color: '#f59e0b', icon: 'square-outline',   next: 'active' },
@@ -463,6 +464,18 @@ export function TasksProvider({ children }) {
       } finally {
         setIsSyncing(false);
       }
+    }
+
+    // Auto-backup every 30 minutes
+    try {
+      const lastBackupRaw = await AsyncStorage.getItem(`${storagePrefix}last_auto_backup_ts`);
+      const lastBackupTs = lastBackupRaw ? parseInt(lastBackupRaw) : 0;
+      if (now - lastBackupTs >= 30 * 60 * 1000) {
+        await createSafetyBackup(storagePrefix, 'Auto Backup');
+        await AsyncStorage.setItem(`${storagePrefix}last_auto_backup_ts`, String(now));
+      }
+    } catch (e) {
+      console.error('Auto-backup failed', e);
     }
   }, [loaded, user, storagePrefix]);
 

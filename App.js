@@ -48,7 +48,6 @@ console.log = (...args) => {
 };
 
 import TasksScreen from './src/screens/TasksScreen';
-import RoutinesScreen from './src/screens/RoutinesScreen';
 import FocusScreen from './src/screens/FocusScreen';
 import DiceScreen from './src/screens/DiceScreen';
 import GamesScreen from './src/screens/GamesScreen';
@@ -61,7 +60,6 @@ import { TasksProvider } from './src/lib/TasksContext';
 import { EconomyProvider, useEconomy } from './src/lib/EconomyContext';
 import { NotesProvider } from './src/lib/NotesContext';
 import { FocusProvider } from './src/lib/FocusContext';
-import { RoutinesProvider } from './src/lib/RoutinesContext';
 
 import { ProfileProvider, useProfile } from './src/lib/ProfileContext';
 import { SettingsProvider } from './src/lib/SettingsContext';
@@ -131,7 +129,6 @@ const Tab = createBottomTabNavigator();
 
 const tabs = [
   { name: 'Tasks', component: TasksScreen, icon: 'checkbox-outline' },
-  { name: 'Routines', component: RoutinesScreen, icon: 'list-circle-outline' },
   { name: 'Focus', component: FocusScreen, icon: 'timer-outline' },
   { name: 'Roll', component: DiceScreen, icon: 'dice-outline' },
   { name: 'Games', component: GamesScreen, icon: 'game-controller-outline' },
@@ -288,13 +285,11 @@ function RootApp() {
       <ThemeProvider>
         <EconomyProvider>
           <TasksProvider>
-            <RoutinesProvider>
-              <NotesProvider>
-                <FocusProvider>
-                  <MainApp />
-                </FocusProvider>
-              </NotesProvider>
-            </RoutinesProvider>
+            <NotesProvider>
+              <FocusProvider>
+                <MainApp />
+              </FocusProvider>
+            </NotesProvider>
           </TasksProvider>
         </EconomyProvider>
       </ThemeProvider>

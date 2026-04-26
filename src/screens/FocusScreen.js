@@ -41,7 +41,14 @@ function fmtDuration(minutes) {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-function fmtDate(date) {
+function fmtDate(dateInput) {
+  if (!dateInput) return '—';
+  // If it's already a YYYY-MM-DD string, parse it manually to avoid timezone shift
+  if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
+    const [y, m, d] = dateInput.split('-');
+    return `${parseInt(m)}/${parseInt(d)}/${y}`;
+  }
+  const date = new Date(dateInput);
   return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
 }
 
@@ -50,12 +57,24 @@ function fmtDateShort(date) {
   return days[date.getDay()];
 }
 
+function fmtTime(dateInput) {
+  if (!dateInput) return '';
+  const date = new Date(dateInput);
+  let hours = date.getHours();
+  const minutes = date.getMinutes();
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  return `${hours}:${minutes < 10 ? '0' + minutes : minutes}${ampm}`;
+}
+
 // ── Date helpers ─────────────────────────────────────────────────────────────
 function isSameDay(d1, d2) {
+  if (!d1 || !d2) return false;
   const a = new Date(d1), b = new Date(d2);
   return a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate();
+         a.getMonth() === b.getMonth() &&
+         a.getDate() === b.getDate();
 }
 
 function getWeekStart(date) {
@@ -1202,6 +1221,7 @@ export default function FocusScreen() {
   const mainScrollRef = useRef(null);
   const galleryRef = useRef(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [expandedDays, setExpandedDays] = useState([new Date().toISOString().split('T')[0]]);
 
   useEffect(() => {
     if (pendingLog) {
@@ -1243,7 +1263,7 @@ export default function FocusScreen() {
   }, [timerState]);
 
   const handleScroll = (event) => {
-    const y = event.nativeEvent.contentOffset.x;
+    const y = event.nativeEvent.contentOffset.y;
     setShowScrollTop(y > 300);
   };
 
@@ -1372,10 +1392,10 @@ export default function FocusScreen() {
   const monthMax = Math.max(...monthData.map(d => d.value), 60);
   const monthTotal = monthData.reduce((acc, d) => acc + d.value, 0);
 
-  // Recent entries (last 20)
+  // Recent entries (last 300 entries)
   const recentEntries = [...entries]
-    .sort((a, b) => b.date - a.date)
-    .slice(0, 20);
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .slice(0, 300);
 
   // ── Productivity stats calculation ──────────────────────────────────────
   const getTimeSummary = (periodEntries) => {
@@ -1389,21 +1409,41 @@ export default function FocusScreen() {
       if (!dayMap[dKey]) dayMap[dKey] = { productive: 0, paid: 0, entertainment: 0, unproductive: 0, sleep: 0 };
       const cat = categories.find(c => c.key === e.category) || { label: 'Deleted', color: '#94a3b8' };
       
-      let nature = cat.nature || (cat.isProductive ? 'productive' : 'entertainment');
-      if (cat.subtype === 'unproductive') nature = 'unproductive';
+      let nature = 'productive';
       
-      // Override with entry-specific branches if present
+      // 1. Start with the category's CURRENT settings as the base
+      if (cat.nature === 'work') {
+        nature = (cat.subtype === 'paid') ? 'paid' : 'productive';
+      } else if (cat.nature === 'personal') {
+        nature = (cat.subtype === 'unproductive') ? 'unproductive' : 'productive';
+      } else if (cat.nature === 'entertainment') {
+        nature = 'entertainment';
+      } else if (cat.nature === 'sleep') {
+        nature = (cat.subtype === 'rest') ? 'sleep' : 'unproductive';
+      } else {
+        // Legacy fallback
+        nature = (cat.nature === 'paid' || cat.nature === 'work') ? 'paid' : 
+                 (cat.nature === 'entertainment' ? 'entertainment' : 
+                 (cat.nature === 'sleep' ? 'sleep' : 'productive'));
+      }
+      
+      // 2. Override with entry-specific branches IF they exist (for future consistency)
       if (e.topLevel === 'work') {
-        nature = e.isPaid ? 'paid' : 'productive';
+        nature = (e.isPaid === true || e.isPaid === 'paid') ? 'paid' : 'productive';
       } else if (e.topLevel === 'personal') {
-        nature = e.isProductive ? 'productive' : 'unproductive';
+        nature = (e.isProductive === true) ? 'productive' : 'unproductive';
       } else if (e.topLevel === 'entertainment') {
         nature = 'entertainment';
       } else if (e.topLevel === 'sleep') {
-        nature = e.isProductive || e.subtype === 'rest' ? 'sleep' : 'unproductive';
+        nature = (e.isProductive === true || e.subtype === 'rest' || e.subtype === 'rested') ? 'sleep' : 'unproductive';
       }
 
-      dayMap[dKey][nature] += Number(e.minutes || 0);
+      if (dayMap[dKey][nature] !== undefined) {
+        dayMap[dKey][nature] += Number(e.minutes || 0);
+      } else {
+        // Fallback for safety
+        dayMap[dKey].unproductive += Number(e.minutes || 0);
+      }
     });
 
     let totalEffProductive = 0;
@@ -1429,7 +1469,7 @@ export default function FocusScreen() {
       paidProductiveTotal: sorted.paid + sorted.productive,
       paid: sorted.paid,
       productive: sorted.productive,
-      unproductive: sorted.unproductive,
+      unproductive: sorted.unproductive + sorted.entertainment,
       entertainment: sorted.entertainment,
       sleep: sorted.sleep,
       score: total > 0 ? Math.round((totalEffProductive / total) * 100) : 0
@@ -1438,6 +1478,26 @@ export default function FocusScreen() {
 
   const todayStats = getTimeSummary(todayEntries);
   const weekStats = getTimeSummary(entries.filter(e => new Date(e.date) >= weekStart));
+
+  const toggleDay = (dKey) => {
+    setExpandedDays(prev => prev.includes(dKey) ? prev.filter(k => k !== dKey) : [...prev, dKey]);
+  };
+
+  const groupEntriesByDay = (data) => {
+    const groups = {};
+    data.forEach(e => {
+      const date = new Date(e.date);
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      const dKey = `${y}-${m}-${d}`;
+      if (!groups[dKey]) groups[dKey] = [];
+      groups[dKey].push(e);
+    });
+    return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
+  };
+
+  const recentGroups = groupEntriesByDay(recentEntries);
 
   return (
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
@@ -1460,7 +1520,9 @@ export default function FocusScreen() {
         </View>
 
         <View style={styles.dashboardSection}>
-          <Text style={styles.sectionTitle}>Dashboard</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Dashboard</Text>
+          </View>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -1481,7 +1543,7 @@ export default function FocusScreen() {
                     style={[
                       styles.clockCircle, 
                       { borderColor: isRunning ? cat.color : colors.border },
-                      isRunning && { backgroundColor: cat.color, shadowOpacity: 0.2, shadowRadius: 15 }
+                      isRunning && { backgroundColor: cat.color }
                     ]}
                     onPress={() => handleTimerClick(cat)}
                     onLongPress={() => setAdjustingKey(key)}
@@ -1702,7 +1764,9 @@ export default function FocusScreen() {
         {/* ── Daily History Gallery ── */}
         <View style={styles.galleryContainer}>
           <View style={styles.galleryHeader}>
-            <Text style={styles.sectionTitle}>Daily History</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={styles.sectionTitle}>Daily History</Text>
+            </View>
             <TouchableOpacity
               style={styles.jumpBtn}
               onPress={() => setShowDatePicker(true)}
@@ -1716,6 +1780,7 @@ export default function FocusScreen() {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.galleryList}
+            snapToInterval={windowWidth - 20}
             snapToAlignment="start"
             decelerationRate="fast"
             disableIntervalMomentum={Platform.OS === 'web'}
@@ -1935,39 +2000,75 @@ export default function FocusScreen() {
 
         {/* ── Recent Entries ── */}
         <View style={styles.recentSection}>
-          <Text style={styles.sectionTitle}>Recent Entries</Text>
-          {recentEntries.length === 0 ? (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Recent Entries</Text>
+          </View>
+          
+          {recentGroups.length === 0 ? (
             <Text style={styles.emptyNote}>No entries yet.</Text>
           ) : (
-            recentEntries.map(entry => {
-              const cat = categories.find(c => c.key === entry.category) || { label: 'Deleted', color: '#94a3b8' };
+            recentGroups.map(([dKey, dayEntries]) => {
+              const isExpanded = expandedDays.includes(dKey);
+              const now = new Date();
+              const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+              const isToday = dKey === todayKey;
+              
               return (
-                <TouchableOpacity key={entry.id} style={styles.entryRow} onPress={() => setEditEntry(entry)}>
-                  <View style={[styles.entryCatIcon, { backgroundColor: cat.color + '18' }]}>
-                    <Ionicons name={cat.icon} size={16} color={cat.color} />
-                  </View>
-                  <View style={styles.entryInfo}>
-                    <Text style={styles.entryCategory}>{cat.label}</Text>
-                    <Text style={styles.entryMeta}>
-                      {fmtDate(entry.date)} · {fmtDuration(entry.minutes)}
-                      {entry.note ? ` · ${entry.note}` : ''}
-                    </Text>
-                  </View>
-                  <Text style={[styles.entryDuration, { color: cat.color }]}>{fmtDuration(entry.minutes)}</Text>
-                  <TouchableOpacity
-                    onPress={(e) => { e.stopPropagation(); handleDeleteEntry(entry.id); }}
-                    style={{ padding: 6, marginLeft: 4 }}
-                    hitSlop={8}
+                <View key={dKey} style={styles.dayGroup}>
+                  <TouchableOpacity 
+                    style={styles.dayHeader} 
+                    onPress={() => toggleDay(dKey)}
+                    activeOpacity={0.7}
                   >
-                    <Ionicons name="trash-outline" size={16} color="#d1d5db" />
+                    <View style={styles.dayHeaderLeft}>
+                      <Ionicons 
+                        name={isExpanded ? "chevron-down" : "chevron-forward"} 
+                        size={16} 
+                        color={colors.textMuted} 
+                      />
+                      <Text style={[styles.dayHeaderText, isToday && { color: colors.primary }]}>
+                        {isToday ? 'Today' : fmtDate(dKey)}
+                      </Text>
+                    </View>
+                    <Text style={styles.dayCountText}>{dayEntries.length} {dayEntries.length === 1 ? 'session' : 'sessions'}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={(e) => { e.stopPropagation(); setEditEntry(entry); }}
-                    style={{ padding: 6 }}
-                  >
-                    <Ionicons name="chevron-forward" size={14} color="#d1d5db" />
-                  </TouchableOpacity>
-                </TouchableOpacity>
+
+                  {isExpanded && (
+                    <View style={styles.dayContent}>
+                      {dayEntries.map(entry => {
+                        const cat = categories.find(c => c.key === entry.category) || { label: 'Deleted', color: '#94a3b8' };
+                        return (
+                          <TouchableOpacity key={entry.id} style={styles.entryRow} onPress={() => setEditEntry(entry)}>
+                            <View style={[styles.entryCatIcon, { backgroundColor: cat.color + '18' }]}>
+                              <Ionicons name={cat.icon} size={16} color={cat.color} />
+                            </View>
+                            <View style={styles.entryInfo}>
+                              <Text style={styles.entryCategory}>{cat.label}</Text>
+                              <Text style={styles.entryMeta}>
+                                {fmtDuration(entry.minutes)} · {fmtTime(entry.date)}
+                                {entry.note ? ` · ${entry.note}` : ''}
+                              </Text>
+                            </View>
+                            <Text style={[styles.entryDuration, { color: cat.color }]}>{fmtDuration(entry.minutes)}</Text>
+                            <TouchableOpacity
+                              onPress={(e) => { e.stopPropagation(); handleDeleteEntry(entry.id); }}
+                              style={{ padding: 6, marginLeft: 4 }}
+                              hitSlop={8}
+                            >
+                              <Ionicons name="trash-outline" size={16} color="#d1d5db" />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={(e) => { e.stopPropagation(); setEditEntry(entry); }}
+                              style={{ padding: 6 }}
+                            >
+                              <Ionicons name="chevron-forward" size={14} color="#d1d5db" />
+                            </TouchableOpacity>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
               );
             })
           )}
@@ -2226,25 +2327,23 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   scrollContent: {
-    paddingBottom: 100,
+    paddingBottom: 140,
   },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: Platform.OS === 'ios' ? 12 : 20, paddingBottom: 8, marginBottom: 12 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4, marginBottom: 15 },
   headerLeft: { flexDirection: 'row', alignItems: 'center' },
   headerTitle: { fontSize: 24, fontWeight: '800', color: '#111827', marginLeft: 10 },
 
   // Section title
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 4, paddingBottom: 10 },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: colors.textPrimary,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 8,
   },
 
   // Dashboard
-  dashboardSection: { marginBottom: 20 },
-  carouselContent: { paddingLeft: 20, paddingRight: 8, paddingBottom: 10 },
+  dashboardSection: { marginBottom: 15 },
+  carouselContent: { paddingLeft: 20, paddingRight: 8, paddingBottom: 0 },
 
   clockWrapper: { alignItems: 'center', width: 110, marginRight: 16 },
   clockCircle: {
@@ -2255,10 +2354,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3,
   },
   clockTimer: {
     fontSize: 16,
@@ -2284,7 +2379,7 @@ const styles = StyleSheet.create({
   },
   clockControls: {
     flexDirection: 'row',
-    marginTop: 8,
+    marginTop: 4,
   },
   smallControlBtn: {
     padding: 6,
@@ -2647,12 +2742,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginHorizontal: 20,
-    marginTop: 16,
+    marginTop: 0,
+    marginBottom: 15,
     paddingVertical: 12,
     borderRadius: 10,
     borderWidth: 1.5,
     borderColor: colors.primary,
     borderStyle: 'dashed',
+    backgroundColor: '#fff',
   },
   addManualText: {
     color: colors.primary,
@@ -2716,7 +2813,7 @@ const styles = StyleSheet.create({
   statsTabs: {
     flexDirection: 'row',
     marginHorizontal: 20,
-    marginTop: 20,
+    marginBottom: 15,
     backgroundColor: '#f3f4f6',
     borderRadius: 10,
     padding: 3,
@@ -2747,8 +2844,8 @@ const styles = StyleSheet.create({
 
   // Chart card
   chartCard: {
-    margin: 20,
-    marginBottom: 0,
+    marginHorizontal: 20,
+    marginBottom: 15,
     padding: 16,
     backgroundColor: '#fafafa',
     borderRadius: 14,
@@ -2849,16 +2946,48 @@ const styles = StyleSheet.create({
 
   // Recent entries
   recentSection: {
-    marginTop: 8,
+    marginTop: 0,
     paddingBottom: 20,
+    paddingHorizontal: 10,
+  },
+  dayGroup: {
+    marginBottom: 4,
+  },
+  dayHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginBottom: 2,
+  },
+  dayHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dayHeaderText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  dayCountText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontWeight: '600',
+  },
+  dayContent: {
+    marginTop: 2,
   },
   entryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    padding: 12,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginBottom: 4,
   },
   entryCatIcon: {
     width: 36,
@@ -3011,8 +3140,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   goalCard: {
-    margin: 20,
-    marginTop: 10,
+    marginHorizontal: 20,
+    marginTop: 0,
+    marginBottom: 15,
     padding: 16,
     backgroundColor: '#fff',
     borderRadius: 14,
@@ -3048,6 +3178,7 @@ const styles = StyleSheet.create({
   // Productivity Card
   productivityCard: {
     marginHorizontal: 20,
+    marginBottom: 15,
     backgroundColor: '#fff',
     borderRadius: 16,
     padding: 18,
@@ -3129,16 +3260,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   categoryGoalRow: {
-    marginBottom: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    marginBottom: 10,
   },
   categoryGoalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 6,
   },
   categoryGoalLabel: {
     fontSize: 14,
@@ -3146,10 +3274,11 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   promptCard: {
-    margin: 20,
-    marginTop: 10,
+    marginHorizontal: 20,
+    marginTop: 0,
+    marginBottom: 15,
     padding: 20,
-    backgroundColor: '#f5f3ff',
+    backgroundColor: '#fff',
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#ddd6fe',
@@ -3178,7 +3307,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   // History Gallery
-  galleryContainer: { marginVertical: 20 },
+  galleryContainer: { marginTop: 0, marginBottom: 15 },
   galleryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 12 },
   jumpBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '10', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, gap: 4 },
   jumpBtnText: { fontSize: 12, fontWeight: '700', color: colors.primary },

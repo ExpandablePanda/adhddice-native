@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Switch, Pl
 import { Ionicons } from '@expo/vector-icons';
 import { useEconomy } from '../lib/EconomyContext';
 import { useTasks } from '../lib/TasksContext';
+import { useNotes } from '../lib/NotesContext';
 import { useTheme } from '../lib/ThemeContext';
 import { useProfile } from '../lib/ProfileContext';
 import { useSettings } from '../lib/SettingsContext';
@@ -12,8 +13,9 @@ import { APP_VERSION } from '../lib/Constants';
 import { getBackups, createSafetyBackup, restoreBackup } from '../lib/BackupManager';
 
 export default function SettingsScreen() {
-  const { resetEconomy, cheatEconomy } = useEconomy();
-  const { setTasks, advanceBoard } = useTasks();
+  const { economy, resetEconomy, cheatEconomy } = useEconomy();
+  const { tasks, taskHistory, setTasks, advanceBoard } = useTasks();
+  const { notes } = useNotes();
   const { isDark, toggleTheme, colors } = useTheme();
   const { logout, user, storagePrefix } = useProfile();
   const { dayStartTime, resetSubtasksOnParentReset, highlightColor, updateSettings } = useSettings();
@@ -168,22 +170,25 @@ export default function SettingsScreen() {
 
   const handleExportData = async () => {
     try {
-      const economyData = await AsyncStorage.getItem(`${storagePrefix}economy`);
-      const tasksData = await AsyncStorage.getItem(`${storagePrefix}tasks`);
-      const notesData = await AsyncStorage.getItem(`${storagePrefix}notes`);
-      const historyData = await AsyncStorage.getItem(`${storagePrefix}task_history`);
+      const focusEntries = await AsyncStorage.getItem(`${storagePrefix}focus_entries`);
+      const focusCats = await AsyncStorage.getItem(`${storagePrefix}focus_cats`);
+      const focusGoals = await AsyncStorage.getItem(`${storagePrefix}focus_goals`);
       const payload = {
-        economy: economyData ? JSON.parse(economyData) : {},
-        tasks: tasksData ? JSON.parse(tasksData) : [],
-        notes: notesData ? JSON.parse(notesData) : [],
-        history: historyData ? JSON.parse(historyData) : [],
+        economy,
+        tasks,
+        notes,
+        history: taskHistory,
+        focus: {
+          entries: focusEntries ? JSON.parse(focusEntries) : [],
+          categories: focusCats ? JSON.parse(focusCats) : [],
+          goals: focusGoals ? JSON.parse(focusGoals) : {},
+        },
       };
-      // Using inline selectable text instead of native clipboard
       setExportData(JSON.stringify(payload, null, 2));
       setShowImport(false);
       Alert.alert("Backup Generated", "Scroll down to see the JSON. Long press the text to copy your backup.");
     } catch (e) {
-      Alert.alert("Export Failed", "Could not export local storage.");
+      Alert.alert("Export Failed", "Could not export data.");
     }
   };
 
@@ -448,6 +453,21 @@ export default function SettingsScreen() {
 
         {showBackups && (
           <View style={{ marginTop: 24 }}>
+            <TouchableOpacity
+              style={{ backgroundColor: colors.primary, padding: 14, borderRadius: 12, alignItems: 'center', marginBottom: 12 }}
+              onPress={async () => {
+                const success = await createSafetyBackup(storagePrefix, 'Manual Backup');
+                if (success) {
+                  const bks = await getBackups(storagePrefix);
+                  setBackups(bks);
+                  Alert.alert("Backed Up!", "Backup saved successfully.");
+                } else {
+                  Alert.alert("Error", "Backup failed.");
+                }
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>Back Up Now</Text>
+            </TouchableOpacity>
             <Text style={styles.sectionLabel}>Available Auto-Backups</Text>
             {backups.length === 0 ? (
               <Text style={{ color: colors.textSecondary, marginLeft: 10 }}>No backups available yet. Auto-backups are created daily on launch.</Text>

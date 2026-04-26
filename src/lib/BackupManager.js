@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 
-const MAX_BACKUPS = 10;
+const MAX_BACKUPS = 48;
 
 /**
  * Format a Date object into a readable date-time string.
@@ -20,8 +20,6 @@ async function captureState(storagePrefix) {
     const tasksData = await AsyncStorage.getItem(`${storagePrefix}tasks`);
     const notesData = await AsyncStorage.getItem(`${storagePrefix}notes`);
     const historyData = await AsyncStorage.getItem(`${storagePrefix}task_history`);
-    const routinesData = await AsyncStorage.getItem(`${storagePrefix}routines`);
-    
     // Focus related
     const focusEntries = await AsyncStorage.getItem(`${storagePrefix}focus_entries`);
     const focusCats = await AsyncStorage.getItem(`${storagePrefix}focus_cats`);
@@ -34,7 +32,6 @@ async function captureState(storagePrefix) {
       tasks: tasksData ? JSON.parse(tasksData) : [],
       notes: notesData ? JSON.parse(notesData) : [],
       history: historyData ? JSON.parse(historyData) : [],
-      routines: routinesData ? JSON.parse(routinesData) : [],
       focus: {
         entries: focusEntries ? JSON.parse(focusEntries) : [],
         categories: focusCats ? JSON.parse(focusCats) : [],
@@ -147,7 +144,7 @@ export async function restoreBackup(storagePrefix, backupId, user = null) {
   if (!backup) return false;
   
   try {
-    const { economy, tasks, notes, history, routines, focus } = backup.data;
+    const { economy, tasks, notes, history, focus } = backup.data;
     const nowISO = new Date().toISOString();
 
     if (economy) {
@@ -159,6 +156,7 @@ export async function restoreBackup(storagePrefix, backupId, user = null) {
     if (tasks || history) {
       if (tasks) await AsyncStorage.setItem(`${storagePrefix}tasks`, JSON.stringify(tasks));
       if (history) await AsyncStorage.setItem(`${storagePrefix}task_history`, JSON.stringify(history));
+      await AsyncStorage.setItem(`${storagePrefix}tasks_last_updated`, '0');
       if (user) {
         const tasksPayload = { tasks: tasks || [], history: history || [], breakTimer: null };
         await supabase.from('user_tasks').upsert({ user_id: user.id, data: tasksPayload, updated_at: nowISO }, { onConflict: 'user_id' });
@@ -168,12 +166,6 @@ export async function restoreBackup(storagePrefix, backupId, user = null) {
       await AsyncStorage.setItem(`${storagePrefix}notes`, JSON.stringify(notes));
       if (user) {
         await supabase.from('user_notes').upsert({ user_id: user.id, data: notes, updated_at: nowISO }, { onConflict: 'user_id' });
-      }
-    }
-    if (routines) {
-      await AsyncStorage.setItem(`${storagePrefix}routines`, JSON.stringify(routines));
-      if (user) {
-        await supabase.from('user_routines').upsert({ user_id: user.id, data: routines, updated_at: nowISO }, { onConflict: 'user_id' });
       }
     }
     if (focus) {

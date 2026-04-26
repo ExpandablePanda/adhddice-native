@@ -21,7 +21,12 @@
       "Bash(ls node_modules/@react-three/drei/node_modules/)",
       "Bash(python3 -c \"import json,sys; p=json.load\\(sys.stdin\\); print\\('main:', p.get\\('main'\\)\\); print\\('module:', p.get\\('module'\\)\\); print\\('exports keys:', list\\(\\(p.get\\('exports'\\) or {}\\).keys\\(\\)\\)[:5]\\)\")",
       "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./node_modules/three/package.json'\\).exports['.'], null, 2\\)\\)\")",
-      "Bash(identify \"/Users/andrewmarkschaffer/App Development/adhddice-native/assets/logo.png\")"
+      "Bash(identify \"/Users/andrewmarkschaffer/App Development/adhddice-native/assets/logo.png\")",
+      "Bash(git restore *)",
+      "Bash(node --input-type=module)",
+      "Bash(sed -n '372,395p' src/lib/EconomyContext.js)",
+      "Bash(sed -n '155,160p' src/lib/NotesContext.js)",
+      "Bash(grep -n \"tasks, taskHistory\\\\|tasks,taskHistory\\\\|return {\" src/lib/TasksContext.js)"
     ]
   }
 }
