@@ -194,7 +194,8 @@ function BattlePhase({
   warStake,
   battleResult, isWar,
   onResolve, onDoTask, onForfeit,
-  pFlip, oFlip, waitingForPlayer, hasFlippedOnce, onPlayerFlip, colors
+  pFlip, oFlip, waitingForPlayer, hasFlippedOnce, onPlayerFlip, colors,
+  battleW, battleH
 }) {
   const stakeContribution = Math.floor(warStake.length / 2);
   const playerCount = playerDeck.length + (playerCard ? 1 : 0) + stakeContribution;
@@ -240,7 +241,7 @@ function BattlePhase({
         </View>
 
         {/* OPPONENT SIDE */}
-        <View style={styles.battleSide}>
+        <View style={[styles.battleSide, { height: (battleH || 200) + 20 }]}>
           <View style={[styles.sideLabelWrapper, { position: 'absolute', left: 20 }]}>
             <Text style={[styles.sideLabel, battleResult === 'opponent' && { color: '#ef4444', fontWeight: '900' }]}>OPPONENT</Text>
           </View>
@@ -251,7 +252,7 @@ function BattlePhase({
         </View>
 
         {/* YOU SIDE */}
-        <View style={styles.battleSide}>
+        <View style={[styles.battleSide, { height: (battleH || 200) + 20 }]}>
           <View style={[styles.sideLabelWrapper, { position: 'absolute', left: 20 }]}>
             <Text style={[styles.sideLabel, battleResult === 'player' && { color: colors.primary, fontWeight: '900' }]}>YOU</Text>
           </View>
@@ -720,7 +721,7 @@ function WarGame({ onBack, tasks, colors, cardW, cardH, battleW, battleH }) {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {phase === 'setup' && <SetupPhase cards={setupCards} onSwapCard={swapCard} onShuffle={startGame} onFlipSound={playFlipSound} />}
         {phase === 'shuffling' && <ShufflingStage onComplete={finishShuffling} playShuffleSound={playShuffleSound} />}
-        {phase === 'battle' && <BattlePhase playerDeck={playerDeck} opponentDeck={opponentDeck} playerCard={playerCard} opponentCard={opponentCard} warStake={warStake} battleResult={battleResult} isWar={isWar} onResolve={resolveRound} onDoTask={doTask} onForfeit={forfeitCards} pFlip={pFlip} oFlip={oFlip} waitingForPlayer={waitingForPlayer} hasFlippedOnce={hasFlippedOnce} onPlayerFlip={handlePlayerFlip} colors={colors}/>}
+        {phase === 'battle' && <BattlePhase playerDeck={playerDeck} opponentDeck={opponentDeck} playerCard={playerCard} opponentCard={opponentCard} warStake={warStake} battleResult={battleResult} isWar={isWar} onResolve={resolveRound} onDoTask={doTask} onForfeit={forfeitCards} pFlip={pFlip} oFlip={oFlip} waitingForPlayer={waitingForPlayer} hasFlippedOnce={hasFlippedOnce} onPlayerFlip={handlePlayerFlip} colors={colors} battleW={battleW} battleH={battleH} />}
       {phase === 'win' && <WinScreen winner={winner} onPlayAgain={playAgain} />}
       </ScrollView>
 
@@ -1430,7 +1431,7 @@ const styles = StyleSheet.create({
   warStakeBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#fef2f2', borderRadius: 8, paddingVertical: 8, marginBottom: 12, borderWidth: 1, borderColor: '#fecaca' },
   warStakeText: { fontSize: 14, fontWeight: '600', color: '#ef4444' },
   battleField: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 10, width: '100%' },
-  battleSide: { width: '100%', alignItems: 'center', justifyContent: 'center', height: BATTLE_H + 20 },
+  battleSide: { width: '100%', alignItems: 'center', justifyContent: 'center' },
   sideLabelWrapper: { width: 85, alignItems: 'flex-start' },
   sideLabel: { fontSize: 11, fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 },
   battleCenter: { alignItems: 'center', justifyContent: 'center', height: 40, zIndex: 10 },
