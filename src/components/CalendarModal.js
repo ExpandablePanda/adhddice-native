@@ -34,7 +34,7 @@ export default function CalendarModal({ visible, onClose, onSelect }) {
   return (
     <Modal visible={visible} transparent animationType="slide">
       <View style={styles.overlay}>
-        <View style={styles.calendarCard}>
+        <View style={[styles.calendarCard, { maxWidth: calendarMax || '100%' }]}>
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity onPress={prevMonth} style={styles.arrowBtn}>
@@ -91,7 +91,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     width: '100%',
-    maxWidth: calendarMax || '100%',
     shadowColor: '#000',
     shadowOpacity: 0.15,
     shadowRadius: 15,
