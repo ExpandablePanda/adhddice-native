@@ -104,13 +104,17 @@ function Divider({ y, width = 1.7, opacity = 0.15 }) {
 function FlameIcon({ r, color }) {
   const fColor = useMemo(() => new THREE.Color(color).convertSRGBToLinear(), [color]);
 
-  // Simple clean flame: pointed tip at TOP, wide lower body, rounded base
+  // Better character flame: triple point (main center, two subtle side licks)
   const shape = useMemo(() => {
     const s = new THREE.Shape();
-    s.moveTo(0, r);                                          // single tip at top
-    s.bezierCurveTo( r*0.55,  r*0.4,  r*0.78, -r*0.2,  r*0.35, -r);  // right side
-    s.quadraticCurveTo(0, -r*1.18, -r*0.35, -r);           // rounded base
-    s.bezierCurveTo(-r*0.78, -r*0.2, -r*0.55,  r*0.4,  0, r);        // left side
+    // Center point
+    s.moveTo(0, r);
+    // Right lick
+    s.bezierCurveTo(r * 0.3, r * 0.7, r * 0.6, r * 0.4, r * 0.4, 0);
+    // Base curves
+    s.bezierCurveTo(r * 0.3, -r * 0.8, -r * 0.3, -r * 0.8, -r * 0.4, 0);
+    // Left lick
+    s.bezierCurveTo(-r * 0.6, r * 0.4, -r * 0.3, r * 0.7, 0, r);
     return s;
   }, [r]);
 
