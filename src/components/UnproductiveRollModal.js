@@ -63,7 +63,7 @@ export default function UnproductiveRollModal({ visible, rolls, onClose, onFinis
 
   function rollNextTask(taskIdx) {
     if (taskIdx >= rolls) {
-      setTimeout(() => setStep('ready_mult'), 600);
+      setTimeout(() => handleRollMultiplier(), 600);
       return;
     }
 
@@ -117,6 +117,10 @@ export default function UnproductiveRollModal({ visible, rolls, onClose, onFinis
     // D6 roll animation for 1 second
     setTimeout(() => {
       setStep('results');
+      // AUTO ACCEPT after 1 second
+      setTimeout(() => {
+        handleClaim();
+      }, 1200);
     }, 1000);
   }
 
@@ -203,7 +207,7 @@ export default function UnproductiveRollModal({ visible, rolls, onClose, onFinis
                 ))}
               </View>
               <Text style={styles.subtitle}>
-                Stay strong! Now roll for your final Efficiency Mitigation.
+                Stay strong! Now roll for your final Penalty Mitigation.
               </Text>
               <TouchableOpacity style={[styles.beginBtn, { backgroundColor: '#111827' }]} onPress={handleRollMultiplier}>
                 <Ionicons name="shield-checkmark" size={20} color="#fff" style={{marginRight: 8}}/>
@@ -260,12 +264,9 @@ export default function UnproductiveRollModal({ visible, rolls, onClose, onFinis
                 </View>
               </View>
 
-              <TouchableOpacity 
-                style={[styles.beginBtn, { marginTop: 32, backgroundColor: '#111827' }]} 
-                onPress={handleClaim}
-              >
-                <Text style={styles.beginBtnText}>Accept Penalty</Text>
-              </TouchableOpacity>
+              <View style={{ height: 100, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: '#ef4444', fontWeight: '700', fontSize: 16 }}>Processing Penalty...</Text>
+              </View>
             </>
           )}
         </ScrollView>

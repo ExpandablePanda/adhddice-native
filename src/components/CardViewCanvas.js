@@ -7,10 +7,13 @@ import * as THREE from 'three';
 import TaskCard3D from './TaskCard3D';
 import { useTheme } from '../lib/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
+import IconSetStatusMenu from './IconSetStatusMenu';
 
 const CARD_FOV    = 60;
 const CAMERA_Z    = 5;
 const ANIM_SECS   = 0.5;
+const EXPLODE_SECS = 0.45;
+const FALL_SECS    = 0.65;
 const MAX_STACK   = 5;
 
 const GLB_MODULE  = require('../../assets/playing_cards.glb');
@@ -92,7 +95,7 @@ function MovingCard({ task, state, progress, fromX, toX, cardScale, glbUri, logo
         task={task}
         position={[0, 0, 0]}
         cardScale={cardScale}
-        isFlipped={false} // Rotation handled by group
+        isFlipped={false}
         spinning={false}
         interactive={false}
         skipInternalAnimation
@@ -103,11 +106,69 @@ function MovingCard({ task, state, progress, fromX, toX, cardScale, glbUri, logo
   );
 }
 
+// ── Cards explode outward from the deck ──────────────────────────────────────
+
+function ExplodingCard({ task, idx, total, cardScale, progress, glbUri, logoUri }) {
+  const groupRef = useRef();
+  const vec = useMemo(() => {
+    const angle = (idx / Math.max(total, 1)) * Math.PI * 2;
+    const r = 2.5 + (idx % 3) * 0.6;
+    return {
+      dx: Math.cos(angle) * r,
+      dy: Math.sin(angle) * r * 0.7 + 1.2,
+      dz: (idx % 2 === 0 ? 1.0 : -0.4),
+      drz: Math.cos(angle + 0.8) * Math.PI,
+    };
+  }, [idx, total]);
+
+  useFrame(() => {
+    if (!groupRef.current) return;
+    const p = progress.current;
+    const e = p * (2 - p); // ease-in-out
+    groupRef.current.position.x = vec.dx * e;
+    groupRef.current.position.y = vec.dy * e;
+    groupRef.current.position.z = vec.dz * e;
+    groupRef.current.rotation.y = Math.PI + Math.PI * p;
+    groupRef.current.rotation.z = vec.drz * e;
+  });
+
+  return (
+    <group ref={groupRef}>
+      <TaskCard3D task={task} position={[0,0,0]} cardScale={cardScale}
+        isFlipped interactive={false} skipInternalAnimation glbUri={glbUri} logoUri={logoUri} />
+    </group>
+  );
+}
+
+// ── Chosen card falls from above, face-up ────────────────────────────────────
+
+function FallingCard({ task, activeX, cardScale, progress, glbUri, logoUri }) {
+  const groupRef = useRef();
+
+  useFrame(() => {
+    if (!groupRef.current) return;
+    const p = progress.current;
+    const ease = 1 - Math.pow(1 - p, 3); // ease-out cubic
+    groupRef.current.position.x = activeX;
+    groupRef.current.position.y = THREE.MathUtils.lerp(9, 0, ease);
+    groupRef.current.position.z = 0.5;
+    groupRef.current.rotation.y = THREE.MathUtils.lerp(Math.PI, Math.PI * 2, p);
+    groupRef.current.rotation.z = Math.sin(p * Math.PI) * 0.12;
+  });
+
+  return (
+    <group ref={groupRef}>
+      <TaskCard3D task={task} position={[0,0,0]} cardScale={cardScale}
+        isFlipped={false} interactive={false} skipInternalAnimation glbUri={glbUri} logoUri={logoUri} />
+    </group>
+  );
+}
+
 // ── The 3D scene: Single deck + active card ──────────────────────────────────
 
 function DeckScene({
   tasks, activeIdx, animState, progress,
-  onDraw, onReturn, onOpen, onHistory, onConfirmStatus, onPrizePress,
+  onDraw, onReturn, onOpen, onHistory, onConfirmStatus, onPrizePress, onOsaat,
   glbUri, logoUri, isDark,
 }) {
   const { viewport } = useThree();
@@ -129,10 +190,10 @@ function DeckScene({
   const activeX   = cardW * 0.15;  // Balanced overlap
 
   useFrame((state, delta) => {
-    if (animState !== 'IDLE') {
-      progress.current = Math.min(1, progress.current + delta / ANIM_SECS);
-    }
-    
+    const durMap = { EXPLODING: EXPLODE_SECS, FALLING: FALL_SECS, RETURNING: ANIM_SECS };
+    const dur = durMap[animState];
+    if (dur) progress.current = Math.min(1, progress.current + delta / dur);
+
     // Parallax
     const targetX = state.pointer.x * 0.3;
     const targetY = state.pointer.y * 0.15;
@@ -142,41 +203,43 @@ function DeckScene({
   });
 
   // Split tasks into Deck vs Active
-  const deckStack = useMemo(() => {
-    const list = [...tasks];
-    if (activeIdx !== null) list.splice(activeIdx, 1);
-    return list.slice(0, MAX_STACK).reverse();
-  }, [tasks, activeIdx]);
-
   const activeTask = activeIdx !== null ? tasks[activeIdx] : null;
+
+  // During explosion, we want the "drawn" card to be part of the scatter too
+  const explosionStack = useMemo(() => {
+    if (animState !== 'EXPLODING') return deckStack;
+    return [...tasks].slice(0, MAX_STACK).reverse();
+  }, [tasks, deckStack, animState]);
 
   return (
     <>
       <SceneBackground isDark={isDark} />
       <ContactShadows position={[0, -cardH * 0.52, 0]} opacity={0.4} scale={10} blur={2.5} far={2} />
 
-      {/* ── Deck Pile (Face Down) ────────────────────────────────────────── */}
-      <group position={[deckX, 0, 0]}>
-        {deckStack.map((task, i) => {
-          const depth = i * 0.01;
-          const isTop = i === deckStack.length - 1;
-          return (
-            <TaskCard3D
-              key={task.id}
-              task={task}
-              position={[0, -depth * 0.5, depth]}
-              cardScale={cardScale}
-              isFlipped
-              interactive={false}
-              onFlip={isTop && animState === 'IDLE' ? onDraw : undefined}
-              glbUri={glbUri}
-              logoUri={logoUri}
-            />
-          );
-        })}
-      </group>
+      {/* ── Deck Pile — hidden during explosion/fall ── */}
+      {animState !== 'EXPLODING' && animState !== 'FALLING' && (
+        <group position={[deckX, 0, 0]}>
+          {deckStack.map((task, i) => {
+            const depth = i * 0.01;
+            const isTop = i === deckStack.length - 1;
+            return (
+              <TaskCard3D
+                key={task.id}
+                task={task}
+                position={[0, -depth * 0.5, depth]}
+                cardScale={cardScale}
+                isFlipped
+                interactive={false}
+                onFlip={isTop && animState === 'IDLE' ? onDraw : undefined}
+                glbUri={glbUri}
+                logoUri={logoUri}
+              />
+            );
+          })}
+        </group>
+      )}
 
-      {/* ── Active Card (Face Up) ────────────────────────────────────────── */}
+      {/* ── Active Card ── */}
       {activeTask && animState === 'IDLE' && (
         <group position={[activeX, 0, 0.5]}>
           <TaskCard3D
@@ -190,24 +253,33 @@ function DeckScene({
             onHistoryPress={() => onHistory && onHistory(activeTask)}
             onConfirmStatus={onConfirmStatus}
             onPrizePress={onPrizePress}
+            onOsaat={onOsaat ? () => onOsaat(activeTask) : undefined}
             glbUri={glbUri}
             logoUri={logoUri}
           />
         </group>
       )}
 
-      {/* ── Moving Animation ─────────────────────────────────────────────── */}
-      {activeTask && animState !== 'IDLE' && (
-        <MovingCard
-          task={activeTask}
-          state={animState}
-          progress={progress}
-          fromX={deckX}
-          toX={activeX}
-          cardScale={cardScale}
-          glbUri={glbUri}
-          logoUri={logoUri}
-        />
+      {/* ── Explosion: ALL cards scatter (including the one being drawn) ── */}
+      {animState === 'EXPLODING' && (
+        <group position={[deckX, 0, 0]}>
+          {explosionStack.map((task, i) => (
+            <ExplodingCard key={task.id} task={task} idx={i} total={explosionStack.length}
+              cardScale={cardScale} progress={progress} glbUri={glbUri} logoUri={logoUri} />
+          ))}
+        </group>
+      )}
+
+      {/* ── Fall: chosen card drops face-up ── */}
+      {activeTask && animState === 'FALLING' && (
+        <FallingCard task={activeTask} activeX={activeX} cardScale={cardScale}
+          progress={progress} glbUri={glbUri} logoUri={logoUri} />
+      )}
+
+      {/* ── Return animation ── */}
+      {activeTask && animState === 'RETURNING' && (
+        <MovingCard task={activeTask} state={animState} progress={progress}
+          fromX={deckX} toX={activeX} cardScale={cardScale} glbUri={glbUri} logoUri={logoUri} />
       )}
     </>
   );
@@ -215,7 +287,7 @@ function DeckScene({
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export default function CardViewCanvas({ tasks = [], onOpen, onHistory, onConfirmStatus, onPrizePress, style }) {
+export default function CardViewCanvas({ tasks = [], onOpen, onHistory, onConfirmStatus, onPrizePress, onOsaat, style }) {
   const { isDark } = useTheme();
   const [assets]   = useAssets(Platform.OS === 'web' ? [GLB_MODULE, LOGO_MODULE] : []);
   const glbUri     = Platform.OS === 'web' ? assets?.[0]?.uri : GLB_MODULE;
@@ -225,7 +297,26 @@ export default function CardViewCanvas({ tasks = [], onOpen, onHistory, onConfir
   const [activeIdx, setActiveIdx] = useState(null);
   const [animState, setAnimState] = useState('IDLE');
   const animProgress = useRef(0);
+  const [pickerTask, setPickerTask] = useState(null);
   const [pendingNext, setPendingNext] = useState(false);
+  const tasksRef = useRef(tasks);
+
+  // Sync deck when tasks change externally
+  React.useEffect(() => {
+    if (tasks !== tasksRef.current) {
+      setDeck(prev => {
+        // Keep active task if it's still in the new tasks list
+        const activeId = activeIdx !== null ? prev[activeIdx]?.id : null;
+        const newDeck = shuffle(tasks);
+        if (activeId) {
+          const newIdx = newDeck.findIndex(t => t.id === activeId);
+          if (newIdx !== -1) setActiveIdx(newIdx);
+        }
+        return newDeck;
+      });
+      tasksRef.current = tasks;
+    }
+  }, [tasks, activeIdx]);
 
   const onReturn = useCallback((andDrawNext = false) => {
     if (animState !== 'IDLE' || activeIdx === null) return;
@@ -246,18 +337,22 @@ export default function CardViewCanvas({ tasks = [], onOpen, onHistory, onConfir
 
   const onDraw = useCallback(() => {
     if (animState !== 'IDLE') return;
+    if (activeIdx !== null) { onReturn(true); return; }
 
-    if (activeIdx !== null) {
-      onReturn(true);
-      return;
-    }
-
+    // Phase 1: deck explodes
     animProgress.current = 0;
     setActiveIdx(0);
-    setAnimState('DRAWING');
+    setAnimState('EXPLODING');
+
+    // Phase 2: chosen card falls face-up
     setTimeout(() => {
-      setAnimState('IDLE');
-    }, ANIM_SECS * 1000 + 50);
+      animProgress.current = 0;
+      setAnimState('FALLING');
+      // Phase 3: settle into IDLE
+      setTimeout(() => {
+        setAnimState('IDLE');
+      }, FALL_SECS * 1000 + 50);
+    }, EXPLODE_SECS * 1000);
   }, [animState, activeIdx, onReturn]);
 
   // Handle auto-cycle chaining
@@ -275,10 +370,25 @@ export default function CardViewCanvas({ tasks = [], onOpen, onHistory, onConfir
   }, [tasks, animState]);
 
   if (Platform.OS === 'web' && !glbUri) return null;
+  if (tasks.length === 0) {
+    return (
+      <View style={[{ height: 540, paddingVertical: 20, backgroundColor: isDark ? '#020617' : '#f8fafc', alignItems: 'center', justifyContent: 'center' }, style]}>
+        <Text style={{ color: isDark ? '#64748b' : '#94a3b8', fontSize: 16, fontWeight: '600' }}>No tasks found for this view</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[{ height: 540, paddingVertical: 20, backgroundColor: isDark ? '#020617' : '#f8fafc' }, style]}>
-      <Canvas style={{ flex: 1 }} alpha legacy samples={0}>
+      <IconSetStatusMenu 
+        visible={!!pickerTask}
+        task={pickerTask}
+        onClose={() => setPickerTask(null)}
+        onConfirm={(task, key) => {
+          onConfirmStatus(task.id, key);
+        }}
+      />
+      <Canvas style={{ flex: 1 }} gl={{ clearColor: isDark ? '#020617' : '#f8fafc' }} legacy samples={0}>
         <PerspectiveCamera makeDefault position={[0, 0, CAMERA_Z]} fov={CARD_FOV} />
         <ambientLight intensity={isDark ? 0.6 : 1.0} />
         <spotLight position={[5, 10, 5]} angle={0.25} penumbra={1} intensity={isDark ? 1.5 : 1.0} />
@@ -294,8 +404,12 @@ export default function CardViewCanvas({ tasks = [], onOpen, onHistory, onConfir
             onReturn={onReturn}
             onOpen={onOpen}
             onHistory={onHistory}
-            onConfirmStatus={onConfirmStatus}
+            onConfirmStatus={(tid, key) => {
+              const t = tasks.find(x => x.id === tid);
+              if (t) setPickerTask(t);
+            }}
             onPrizePress={onPrizePress}
+            onOsaat={onOsaat}
             glbUri={glbUri}
             logoUri={logoUri}
             isDark={isDark}
@@ -320,7 +434,7 @@ export default function CardViewCanvas({ tasks = [], onOpen, onHistory, onConfir
 const styles = StyleSheet.create({
   floatingBar: {
     position: 'absolute',
-    bottom: 110,
+    bottom: 0,
     left: '50%',
     transform: [{ translateX: -100 }],
     width: 200,

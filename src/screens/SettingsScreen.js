@@ -13,7 +13,7 @@ import { getBackups, createSafetyBackup, restoreBackup } from '../lib/BackupMana
 
 export default function SettingsScreen() {
   const { resetEconomy, cheatEconomy } = useEconomy();
-  const { setTasks } = useTasks();
+  const { setTasks, advanceBoard } = useTasks();
   const { isDark, toggleTheme, colors } = useTheme();
   const { logout, user, storagePrefix } = useProfile();
   const { dayStartTime, resetSubtasksOnParentReset, highlightColor, updateSettings } = useSettings();
@@ -22,6 +22,12 @@ export default function SettingsScreen() {
   const [importDataText, setImportDataText] = useState('');
   const [showBackups, setShowBackups] = useState(false);
   const [backups, setBackups] = useState([]);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
   
   const scrollRef = useRef(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -74,7 +80,7 @@ export default function SettingsScreen() {
       await createSafetyBackup(storagePrefix, 'Before Demo Data');
       const categories = ['work', 'health', 'finance', 'chores', 'social', 'hobby', 'studies', 'self-care'];
       const energyLevels = ['low', 'medium', 'high'];
-      const statuses = ['pending', 'active', 'done', 'missed', 'did_my_best', 'upcoming', 'first_step'];
+      const statuses = ['pending', 'done', 'missed', 'did_my_best'];
       const titles = [
         'Take out trash', 'Walk dog', 'Review budget', 'Clean kitchen', 'Read 1 chapter',
         'Morning yoga', 'Refill water bottle', 'Respond to email', 'Draft project plan', 'Buy groceries',
@@ -135,6 +141,29 @@ export default function SettingsScreen() {
     } else {
       loadDemo();
     }
+  };
+
+  const handleAdvanceBoard = () => {
+    const runAdvance = () => {
+      advanceBoard();
+      Alert.alert("Board Advanced! 🚀", "Priority markers cleared and day reset. Your board is ready for a fresh start.");
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm("Advance Board? This will reset your day and clear all priority markers.")) {
+        runAdvance();
+      }
+      return;
+    }
+
+    Alert.alert(
+      "Advance Board",
+      "This will manually roll over your board to the next day and clear all current priority markers. Proceed?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Advance 🚀", style: "destructive", onPress: runAdvance }
+      ]
+    );
   };
 
   const handleExportData = async () => {
@@ -208,7 +237,12 @@ export default function SettingsScreen() {
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Ionicons name="settings-outline" size={24} color={colors.primary} />
-            <Text style={styles.headerTitle}>Settings</Text>
+            <View>
+              <Text style={styles.headerTitle}>Settings</Text>
+              <Text style={{ fontSize: 13, color: colors.textSecondary, fontWeight: '600', marginTop: -2 }}>
+                {currentTime.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} • {currentTime.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -318,6 +352,17 @@ export default function SettingsScreen() {
 
         <Text style={styles.sectionLabel}>Data Management</Text>
         <View style={styles.card}>
+          <TouchableOpacity style={styles.cardRow} onPress={handleAdvanceBoard}>
+            <View style={[styles.iconBox, { backgroundColor: '#f5f3ff' }]}>
+              <Ionicons name="rocket" size={20} color="#8b5cf6" />
+            </View>
+            <View style={styles.rowBody}>
+              <Text style={styles.rowTitle}>Advance Board</Text>
+              <Text style={styles.rowDesc}>Manually reset for the new day & clear Focus pins.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.border} />
+          </TouchableOpacity>
+
           <TouchableOpacity style={styles.cardRow} onPress={handleNukeTasks}>
             <View style={[styles.iconBox, { backgroundColor: '#fee2e2' }]}>
               <Ionicons name="trash" size={20} color={colors.red} />

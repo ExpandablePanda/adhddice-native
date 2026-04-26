@@ -369,13 +369,27 @@ const headerStyles = StyleSheet.create({
 
 function FloatingNav({ tabs, state, navigation }) {
   const { colors, isDark } = useTheme();
-  const [expanded, setExpanded] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(true);
+
+  React.useEffect(() => {
+    const loadState = async () => {
+      try {
+        const saved = await AsyncStorage.getItem('adhddice_nav_expanded');
+        if (saved !== null) {
+          setExpanded(saved === 'true');
+        }
+      } catch (e) {}
+    };
+    loadState();
+  }, []);
 
   const currentRouteName = state?.routes[state.index]?.name || 'Tasks';
 
   const toggle = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpanded(!expanded);
+    const next = !expanded;
+    setExpanded(next);
+    AsyncStorage.setItem('adhddice_nav_expanded', String(next)).catch(() => {});
   };
 
   const goTo = (name) => {

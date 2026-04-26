@@ -7,16 +7,22 @@ import { supabase } from './supabase';
 import { useEconomy } from './EconomyContext';
 
 export const STATUSES = {
-  first_step:  { label: '1st Step',    color: '#8b5cf6', icon: 'footsteps-outline', next: 'active' },
-  upcoming:    { label: 'Upcoming',    color: '#64748b', icon: 'calendar-outline', next: 'pending' },
-  pending:     { label: 'Pending',     color: '#f97316', icon: 'time-outline', next: 'active' },
-  active:      { label: 'In Progress', color: '#eab308', icon: 'play-outline', next: 'did_my_best' },
-  did_my_best: { label: 'Did My Best', color: '#0ea5e9', icon: 'star-outline', next: 'missed' },
-  missed:      { label: 'Missed',      color: '#ef4444', icon: 'close-circle-outline', next: 'done' },
-  done:        { label: 'Done',        color: '#10b981', icon: 'checkmark-circle-outline', next: 'upcoming' },
+  pending:       { label: 'Pending',       color: '#f59e0b', icon: 'square-outline',   next: 'active' },
+  active:        { label: 'In Progress',   color: '#8b5cf6', icon: 'play-outline',     next: 'done' },
+  done:          { label: 'Done',          color: '#10b981', icon: 'checkmark-circle', next: 'missed' },
+  missed:        { label: 'Missed',        color: '#ef4444', icon: 'close-circle',     next: 'did_my_best' },
+  did_my_best:   { label: 'I Did My Best', color: '#3b82f6', icon: 'star',             next: 'pending' },
+  upcoming:      { label: 'Upcoming',      color: '#9ca3af', icon: 'calendar-outline', next: 'pending' },
+  not_due:       { label: 'Not Due',       color: '#38bdf8', icon: 'snow-outline',     next: 'pending' }
 };
 
-export const STATUS_ORDER = ['first_step', 'active', 'pending', 'missed', 'upcoming', 'done', 'did_my_best'];
+export const STATUS_ORDER = ['active', 'pending', 'upcoming', 'not_due', 'missed', 'done', 'did_my_best'];
+
+export const ENERGY = {
+  low:    { label: 'Low',    color: '#10b981', bg: '#d1fae5' },
+  medium: { label: 'Medium', color: '#f59e0b', bg: '#fef3c7' },
+  high:   { label: 'High',   color: '#ef4444', bg: '#fee2e2' },
+};
 
 const TasksContext = createContext();
 
@@ -91,13 +97,14 @@ export function calculateTaskMissedStreak(history = {}, dayStartTime = 6, isRecu
   return streak;
 }
 
-export function calculateTaskStreak(history = {}, dayStartTime = 6, isRecurring = true) {
+export function calculateTaskStreak(history = {}, dayStartTime = 6, isRecurring = true, frequency = 'daily') {
   const today = new Date();
   if (today.getHours() < dayStartTime) {
     today.setDate(today.getDate() - 1);
   }
   today.setHours(0, 0, 0, 0);
 
+  const isDaily = !frequency || frequency.toLowerCase() === 'daily';
   let streak = 0;
   for (let i = 0; i <= 365; i++) {
     const d = new Date(today);
@@ -105,14 +112,22 @@ export function calculateTaskStreak(history = {}, dayStartTime = 6, isRecurring 
     const key = getLocalDateKey(d);
     const s = history[key];
     
+    // If it's today and not yet handled, keep looking back without breaking
     if (i === 0 && !s) continue;
-
-    // Disconnect streak for one-offs if it's not the day they were active
-    if (!isRecurring && i > 0 && streak > 0) break;
 
     if (s === 'done' || s === 'did_my_best') {
       streak++;
+    } else if (s === 'missed') {
+      break;
+    } else if (!s) {
+      // If no entry, only break if it's a daily task or if it's not the day it was active
+      if (isDaily) break;
+      if (!isRecurring && i > 0 && streak > 0) break;
+      // Otherwise, skip this day and keep searching for the last completion
+      continue;
     } else {
+      // Any other status (active, pending, etc.) in history? 
+      // Usually these aren't in history, but we'll break just in case.
       break;
     }
   }
@@ -497,7 +512,7 @@ export function TasksProvider({ children }) {
     };
   }, [tasks, taskHistory, breakTimer, gamesPlayCredits, loaded, user, storagePrefix, triggerTasksSync, saveTasksData]);
 
-  // 3. Day-Start Transition Logic
+  // 3. Day-Start Transition Logic (Refactored for Stability)
   useEffect(() => {
     if (!loaded) return;
 
@@ -505,76 +520,127 @@ export function TasksProvider({ children }) {
       const now = new Date();
       const hour = now.getHours();
       const appTodayKey = getAppDayKey(dayStartTime);
-      const yesterday = new Date(now);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayKey = getLocalDateKey(yesterday);
+      
+      // Calculate appYesterdayKey correctly based on appTodayKey
+      const d = new Date(appTodayKey + 'T12:00:00');
+      d.setDate(d.getDate() - 1);
+      const appYesterdayKey = getLocalDateKey(d);
 
-      let changed = false;
-      const nextTasks = tasks.map(t => {
-        let newTask = { ...t };
-        const hist = t.statusHistory || {};
-        const lowFreq = t.frequency?.toLowerCase() || '';
-        const isRecurring = !!t.frequency;
-        
-        // A. Catch missed tasks from yesterday calendar-date
-        if (hour >= dayStartTime && !hist[yesterdayKey]) {
-          const wasDaily = lowFreq === 'daily';
-          const normalizedDue = normalizeDateKey(t.dueDate);
-          const wasWeeklyToday = lowFreq === 'weekly' && (t.weeklyMode === 'fixed_day' || !t.weeklyMode) && t.weeklyDay === yesterday.getDay();
-          const wasDueYesterday = isRecurring 
-            ? (normalizedDue && normalizedDue <= yesterdayKey)
-            : (normalizedDue === yesterdayKey);
-
-          if (wasDaily || wasWeeklyToday || wasDueYesterday) {
-             const updatedHist = { ...hist, [yesterdayKey]: 'missed' };
+      setTasks(prev => {
+        let changed = false;
+        const nextTasks = prev.map(t => {
+          let newTask = { ...t };
+          const hist = t.statusHistory || {};
+          const lowFreq = t.frequency?.toLowerCase() || '';
+          const isRecurring = !!t.frequency;
+          
+          // NEW: Auto-Finish In-Progress Recurring Tasks
+          // If you are working on it during rollover, mark it "Did My Best" for yesterday
+          // and reset it for today/future.
+          if (hour >= dayStartTime && newTask.status === 'active' && isRecurring && !hist[appYesterdayKey]) {
+             const updatedHist = { ...hist, [appYesterdayKey]: 'did_my_best' };
              newTask.statusHistory = updatedHist;
-             newTask.status = 'missed'; 
-             newTask.streak = calculateTaskStreak(updatedHist, dayStartTime, isRecurring);
+             
+             // For Daily tasks, move to today. For others, use next occurrence.
+             if (lowFreq === 'daily') {
+               newTask.dueDate = appTodayKey;
+             } else {
+               newTask.dueDate = calcNextDueDate(newTask, dayStartTime);
+             }
+             
+             newTask.status = 'not_due'; // Recurring tasks that have started move to Not Due
+             newTask.streak = calculateTaskStreak(updatedHist, dayStartTime, isRecurring, lowFreq);
              changed = true;
           }
-        }
 
-        // B. Persistence for MISSED tasks (Recurring only)
-        if (hour >= dayStartTime && !hist[appTodayKey] && isRecurring) {
-          const wasMissedYesterday = hist[yesterdayKey] === 'missed';
-          if (wasMissedYesterday && newTask.status === 'missed') {
-            const updatedHist = { ...hist, [appTodayKey]: 'missed' };
-            newTask.statusHistory = updatedHist;
-            changed = true;
-          }
-        }
-
-        // C. Auto-activate upcoming tasks
-        if (hour >= dayStartTime) {
-          if (newTask.status === 'upcoming') {
-            const histVal = hist[appTodayKey];
-            const isHandledToday = histVal === 'done' || histVal === 'did_my_best' || histVal === 'missed';
+          // A. Catch missed tasks from yesterday calendar-date
+          // Only mark missed if:
+          // 1. Day rollover has happened (hour >= dayStartTime)
+          // 2. No history entry exists for yesterday
+          // 3. Current status is NOT 'active', 'done', or 'did_my_best' (In progress items stay safe)
+          if (hour >= dayStartTime && !hist[appYesterdayKey] && newTask.status !== 'active' && newTask.status !== 'done' && newTask.status !== 'did_my_best' && newTask.status !== 'not_due' && newTask.status !== 'upcoming') {
             const isDaily = lowFreq === 'daily';
-            const isWeeklyToday = lowFreq === 'weekly' && (t.weeklyMode === 'fixed_day' || !t.weeklyMode) && t.weeklyDay === now.getDay();
             const normalizedDue = normalizeDateKey(t.dueDate);
-            const isDueToday = isDaily || isWeeklyToday || (normalizedDue && normalizedDue <= appTodayKey);
+            const isWeeklyYesterday = lowFreq === 'weekly' && (t.weeklyMode === 'fixed_day' || !t.weeklyMode) && t.weeklyDay === d.getDay();
             
-            if (isDueToday && !isHandledToday) {
-               newTask.status = 'pending';
-               newTask.subtasks = mapSubtasks(t.subtasks || [], s => {
-                 if (s.status === 'upcoming') return { ...s, status: 'pending' };
-                 return s;
-               });
+            // Strictly check if it was due yesterday (not today or future)
+            const wasDueYesterday = isRecurring 
+              ? (normalizedDue && normalizedDue === appYesterdayKey)
+              : (normalizedDue === appYesterdayKey);
+
+            if (isDaily || isWeeklyYesterday || wasDueYesterday) {
+               const updatedHist = { ...hist, [appYesterdayKey]: 'missed' };
+               newTask.statusHistory = updatedHist;
+               newTask.status = 'missed'; 
+               newTask.streak = calculateTaskStreak(updatedHist, dayStartTime, isRecurring, lowFreq);
                changed = true;
             }
           }
-        }
-        
-        return newTask;
-      });
 
-      if (changed) setTasks(nextTasks);
+          // B. Persistence for MISSED tasks (Recurring only)
+          if (hour >= dayStartTime && !hist[appTodayKey] && isRecurring) {
+            const wasMissedYesterday = hist[appYesterdayKey] === 'missed';
+            if (wasMissedYesterday && newTask.status === 'missed') {
+              const updatedHist = { ...hist, [appTodayKey]: 'missed' };
+              newTask.statusHistory = updatedHist;
+              newTask.streak = calculateTaskStreak(updatedHist, dayStartTime, isRecurring, lowFreq);
+              changed = true;
+            }
+          }
+
+          // C. Auto-activate upcoming/not_due tasks
+          if (hour >= dayStartTime) {
+            if (newTask.status === 'upcoming' || newTask.status === 'not_due') {
+              const histVal = hist[appTodayKey];
+              const isHandledToday = histVal === 'done' || histVal === 'did_my_best' || histVal === 'missed';
+              const isDaily = lowFreq === 'daily';
+              const isWeeklyToday = lowFreq === 'weekly' && (t.weeklyMode === 'fixed_day' || !t.weeklyMode) && t.weeklyDay === now.getDay();
+              const normalizedDue = normalizeDateKey(t.dueDate);
+              const isDueToday = isDaily || isWeeklyToday || (normalizedDue && normalizedDue <= appTodayKey);
+              
+              if (isDueToday && !isHandledToday) {
+                 newTask.status = 'pending';
+                 newTask.subtasks = mapSubtasks(t.subtasks || [], s => {
+                   if (s.status === 'upcoming' || s.status === 'not_due') return { ...s, status: 'pending' };
+                   return s;
+                 });
+                 changed = true;
+              }
+            }
+          }
+          
+          // D. Momentum Rollover for Recurring Active Tasks
+          // If a recurring task is 'active' (in progress) during rollover,
+          // we mark it 'did_my_best' for yesterday and reset it for today.
+          if (hour >= dayStartTime && !hist[appYesterdayKey] && newTask.status === 'active' && isRecurring) {
+             const updatedHist = { ...hist, [appYesterdayKey]: 'did_my_best' };
+             const nextDate = calcNextDueDate({ ...newTask, statusHistory: updatedHist }, dayStartTime);
+             
+             newTask.statusHistory = updatedHist;
+             newTask.dueDate = nextDate;
+             
+             // If the next due date is today, make it pending immediately
+             if (nextDate === appTodayKey) {
+               newTask.status = 'pending';
+             } else {
+               newTask.status = 'not_due';
+             }
+             
+             newTask.streak = calculateTaskStreak(updatedHist, dayStartTime, isRecurring, lowFreq);
+             changed = true;
+          }
+          
+          return newTask;
+        });
+
+        return changed ? nextTasks : prev;
+      });
     }
 
     processTransitions();
-    const interval = setInterval(processTransitions, 1000 * 60 * 60);
+    const interval = setInterval(processTransitions, 1000 * 60 * 30); // Run every 30m
     return () => clearInterval(interval);
-  }, [loaded, tasks, dayStartTime]);
+  }, [loaded, dayStartTime]);
 
   const logTaskEvent = useCallback((task, status) => {
     const event = {
@@ -697,14 +763,14 @@ export function TasksProvider({ children }) {
       if (isCompletion && isRecurring) {
         const nextDate = calcNextDueDate(task, dayStartTime);
         nextData = {
-          status: 'upcoming',
+          status: 'not_due',
           dueDate: nextDate,
           completedAt: null,
           gainedReward: null,
           subtasks: mapSubtasks(task.subtasks || [], s => {
             const shouldReset = task.resetSubtasksOnParentReset ?? true;
             if (shouldReset === false) return s;
-            return { ...s, status: 'upcoming' };
+            return { ...s, status: 'not_due' };
           })
         };
       } else if (isCompletion) {
@@ -770,11 +836,17 @@ export function TasksProvider({ children }) {
     }
   }, [dayStartTime, setTasks, logTaskEvent, unlockPrizeByTaskId, tasks, addFreeRoll]);
 
+  const advanceBoard = useCallback(async () => {
+    const todayKey = getAppDayKey(dayStartTime);
+    await AsyncStorage.setItem('@ADHD_last_reset', todayKey);
+    setTasks(prev => prev.map(t => ({ ...t, isPriority: false })));
+  }, [dayStartTime, setTasks]);
+
   if (!loaded) return null;
 
   return (
     <TasksContext.Provider value={{ 
-      tasks, setTasks, 
+      tasks, setTasks, advanceBoard,
       taskHistory, logTaskEvent, 
       isSyncing,
       breakTimer, setBreakTimer, startBreak,

@@ -1008,9 +1008,9 @@ function FocusImportModal({ visible, categories, onClose, onImport }) {
   );
 }
 
-// EfficiencyRollModal handles the display now
+// BankedRollsModal handles the display now
 
-// EfficiencyRollModal handles the display now
+// BankedRollsModal handles the display now
 
 // ═════════════════════════════════════════════════════════════════════════════
 // MAIN FOCUS SCREEN
