@@ -159,11 +159,11 @@ function RPGHeaderRight() {
         </View>
       </View>
       <View style={headerStyles.pointsBadge}>
-        <Ionicons name="star" size={12} color={colors.amber} />
+        <Ionicons name="diamond" size={12} color={colors.amber} />
         <Text style={[headerStyles.pointsText, { color: colors.textPrimary }]}>{economy.points}</Text>
       </View>
-      <View style={[headerStyles.pointsBadge, { marginLeft: 8 }]}>
-        <Ionicons name="wallet" size={12} color="#8b5cf6" />
+      <View style={[headerStyles.pointsBadge, { marginLeft: 2 }]}>
+        <Ionicons name="ticket" size={12} color="#B76E79" />
         <Text style={[headerStyles.pointsText, { color: colors.textPrimary }]}>{economy.tokens || 0}</Text>
       </View>
     </View>
@@ -181,7 +181,7 @@ function LogoHeaderLeft() {
           height: 80,       // <--- Original x 1.25
           width: 350,       // <--- Original x 1.25
           marginLeft: -110, // <--- Adjusted for extra width
-          marginTop: 10,    // <--- Lowered from -10 to 10
+          marginTop: Platform.OS === 'web' ? 10 : -10,
           backgroundColor: 'transparent',
           resizeMode: 'contain'
         }}
@@ -324,7 +324,7 @@ const headerStyles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 3,
     borderRadius: 6,
-    marginRight: 8,
+    marginRight: 4,
   },
   lvlText: {
     color: '#fff',
@@ -332,11 +332,11 @@ const headerStyles = StyleSheet.create({
     fontSize: 11,
   },
   xpContainer: {
-    width: 50,
-    marginRight: 8,
+    minWidth: 50,
+    marginRight: 4,
   },
   xpTextRow: {
-    alignItems: 'flex-end',
+    alignItems: 'flex-start',
     marginBottom: 2,
   },
   xpVal: {
