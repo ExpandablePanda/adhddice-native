@@ -1776,7 +1776,7 @@ function ShuffleModal({ task, onClose, onShuffle, onOpen, onCycleStatus }) {
 // LATE NIGHT CATCH-UP (NEW)
 // ═════════════════════════════════════════════════════════════════════════════
 
-function LateNightCatchUp({ tasks, onConfirmStatus }) {
+function LateNightCatchUp({ tasks, onConfirmStatus, completeTask }) {
   const { colors } = useTheme();
   const { dayStartTime } = useSettings();
   // Filter for tasks that are 'pending' or 'active' (In Progress)
@@ -1784,10 +1784,14 @@ function LateNightCatchUp({ tasks, onConfirmStatus }) {
   
   if (unfinished.length === 0) return null;
 
+  const appDay = getAppDayKey(dayStartTime);
+
   return (
     <View style={[styles.fydBox, { borderColor: colors.amber, borderWidth: 1, backgroundColor: colors.background, zIndex: 100 }]}>
       <View style={[styles.fydHeader, { alignItems: 'center' }]}>
-        <Text style={[styles.fydStepText, { color: colors.amber, marginBottom: 0 }]}>Late Night Review 🌙</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={[styles.fydStepText, { color: colors.amber, marginBottom: 0 }]}>Late Night Review 🌙</Text>
+        </View>
         
         <TouchableOpacity 
           style={{ 
@@ -1849,8 +1853,13 @@ function LateNightCatchUp({ tasks, onConfirmStatus }) {
                     opacity: pressed ? 0.7 : 1,
                   })}
                   onPress={() => {
-                    console.log(`LateNightReview: Confirming ${st} for ${t.id}`);
-                    onConfirmStatus(t.id, st);
+                    console.log(`LateNightReview: Applying ${st} to ${t.id} for ${appDay}`);
+                    if (st === 'missed') {
+                      onConfirmStatus(t.id, st); // Keep the safety alert for 'missed'
+                    } else {
+                      // Bypass the reward modal for quick catch-up
+                      completeTask(t.id, st, appDay); 
+                    }
                   }}
                 >
                   <Text style={{ fontSize: 10, fontWeight: '700', color: '#fff' }}>
@@ -1936,7 +1945,7 @@ export default function TasksScreen() {
   const { dayStartTime } = useSettings();
   const { 
     tasks, setTasks, logTaskEvent, taskHistory, isSyncing, 
-    breakTimer, setBreakTimer, completeTask 
+    breakTimer, setBreakTimer, completeTask, advanceBoard 
   } = useTasks();
   const [refreshing, setRefreshing] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
@@ -2417,12 +2426,9 @@ export default function TasksScreen() {
       // Handle day rollover manually
       Alert.alert("Advance Board", "Proceed to start the next day and reset recurring tasks?", [
         { text: "Cancel", style: "cancel" },
-        { text: "Advance", onPress: () => {
-          // The rollover logic is handled by TasksContext's processTransitions
-          // but we can force it by updating a timestamp if needed.
-          // For now, we'll just show success and rely on the background check
-          // OR we can explicitly trigger a board refresh if the context allows.
-          Alert.alert("Success", "Board advanced. Recurring tasks will now reset.");
+        { text: "Advance", onPress: async () => {
+          await advanceBoard();
+          Alert.alert("Success", "Board advanced. Recurring tasks have been reset for today.");
         }}
       ]);
       return;
@@ -2683,7 +2689,7 @@ export default function TasksScreen() {
         {(() => {
           const hour = new Date().getHours();
           if (hour >= 0 && hour < dayStartTime) {
-            return <LateNightCatchUp tasks={tasks} onConfirmStatus={confirmStatus} />;
+            return <LateNightCatchUp tasks={tasks} onConfirmStatus={confirmStatus} completeTask={completeTask} />;
           }
           return null;
         })()}
