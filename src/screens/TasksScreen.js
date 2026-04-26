@@ -2933,7 +2933,7 @@ export default function TasksScreen() {
               const cfg = STATUSES[s];
               const active = filterStatus.includes(s);
               const count = tasks.filter(t => t.status === s).length;
-              if (count === 0) return null;
+              if (count === 0 && s !== 'not_due') return null;
               return (
                 <TouchableOpacity
                   key={s}
