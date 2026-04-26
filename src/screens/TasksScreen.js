@@ -1945,8 +1945,6 @@ export default function TasksScreen() {
   const numColumns = Platform.OS === 'web' && windowWidth > 700 ? 5 : 2;
   const cardW = (windowWidth - 14 * 2 - 12 * (numColumns - 1)) / numColumns;
   const cardH = cardW * 1.4;
-  const cardW = (windowWidth - 14 * 2 - 12 * (numColumns - 1)) / numColumns;
-  const webCardBase = windowWidth;
   const isFocused = useIsFocused();
   const { colors } = useTheme();
   const { dayStartTime } = useSettings();
