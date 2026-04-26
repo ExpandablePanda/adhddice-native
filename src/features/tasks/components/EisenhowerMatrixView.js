@@ -6,14 +6,15 @@ import {
   ScrollView, 
   Modal, 
   StyleSheet,
-  Dimensions
+  Dimensions,
+  useWindowDimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../lib/ThemeContext';
 import { STATUSES, ENERGY, getAppDayKey } from '../../../lib/TasksContext';
 import IconSetStatusMenu from '../../../components/IconSetStatusMenu';
 
-const SCREEN_W = Dimensions.get('window').width;
+
 
 
 function MatrixQuadrant({ title, subtitle, color, tasks, onOpen, onConfirmStatus, onHistory }) {
@@ -89,6 +90,7 @@ function MatrixQuadrant({ title, subtitle, color, tasks, onOpen, onConfirmStatus
 }
 
 export default function EisenhowerMatrixView({ tasks, onOpen, onConfirmStatus, onHistory, dayStartTime }) {
+  const { width: windowWidth } = useWindowDimensions();
   const todayKey = getAppDayKey(dayStartTime);
   const [ty, tm, td] = todayKey.split('-');
   const mdy = `${tm}/${td}/${ty}`;

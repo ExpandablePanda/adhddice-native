@@ -2,7 +2,8 @@ import React, { useState, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, TextInput, Modal, Alert, Dimensions,
-  KeyboardAvoidingView, Platform
+  KeyboardAvoidingView, Platform,
+  useWindowDimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,7 +13,7 @@ import { useTheme } from '../lib/ThemeContext';
 import ScrollToTop from '../components/ScrollToTop';
 import ModalScreen from '../components/ModalScreen';
 
-const { width: SCREEN_W } = Dimensions.get('window');
+
 
 // ── Components ───────────────────────────────────────────────────────────────
 
@@ -64,6 +65,7 @@ function NoteCard({ note, onPress }) {
 // ── Main Screen ───────────────────────────────────────────────────────────────
 
 export default function NotesScreen() {
+  const { width: windowWidth } = useWindowDimensions();
   const { colors } = useTheme();
   const { notes, addNote, updateNote, deleteNote } = useNotes();
   const { setTasks } = useTasks();

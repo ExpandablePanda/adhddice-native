@@ -3,7 +3,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, SectionList, FlatList, TouchableOpacity, TextInput,
   StyleSheet, Modal, KeyboardAvoidingView, Platform, Image,
-  ScrollView, Alert, Animated, RefreshControl, AppState, Linking, Switch, Pressable
+  ScrollView, Alert, Animated, RefreshControl, AppState, Linking, Switch, Pressable,
+  useWindowDimensions
 } from 'react-native';
 import { useFocusEffect, useNavigation, useIsFocused } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,13 +34,9 @@ import FocusYourDay from '../features/tasks/components/FocusYourDay';
 import OneStepAtATimeView from '../features/tasks/components/OneStepAtATimeView';
 import { generateId, newSubtask, BLANK, toggleById, deleteById, addChildTo, countSubtasks, countDone, cycleStatusInTree, updateStatusInTree, findInTree, reorderInTree, ensureUniqueIds, getStepPresets, flattenToSteps } from '../features/tasks/utils/taskTreeUtils';
 
-const SCREEN_W = Dimensions.get('window').width;
 const CARD_GAP = 12;
 const CARD_PAD = 14;
-const numColumns  = Platform.OS === 'web' && SCREEN_W > 700 ? 5 : 2;
-const WEB_CARD_BASE = SCREEN_W;
-const CARD_W   = (WEB_CARD_BASE - CARD_PAD * 2 - CARD_GAP * (numColumns - 1)) / numColumns;
-const CARD_H   = CARD_W * 1.4;  // standard playing card ratio (5:7)
+
 
 
 
@@ -957,7 +954,7 @@ function TaskCard({ task, onConfirmStatus, onOpen, onHistory, isFlipped, onFlipC
   }
 
   return (
-    <View style={{ width: CARD_W, height: CARD_H }}>
+    <View style={{ width: cardW, height: cardH }}>
       {/* Card Back */}
       <Animated.View
         style={[styles.card, styles.cardBack, { transform: [{ rotateY: backRotate }], opacity: backOpacity, position: 'absolute', top: 0, left: 0 }]}
@@ -1616,6 +1613,10 @@ function ImportModal({ visible, onClose, onImport }) {
 // ═════════════════════════════════════════════════════════════════════════════
 
 function ShuffleModal({ task, onClose, onShuffle, onOpen, onCycleStatus }) {
+  const { width: windowWidth } = useWindowDimensions();
+  const numCols = Platform.OS === 'web' && windowWidth > 700 ? 5 : 2;
+  const cw = (windowWidth - 14 * 2 - 12 * (numCols - 1)) / numCols;
+  const ch = cw * 1.4;
   const [phase, setPhase]           = useState('shuffle');
   const [current, setCurrent]       = useState(task); // local copy so status updates reflect immediately
   const [stagedStatus, setStagedStatus] = useState(null);
@@ -1681,10 +1682,10 @@ function ShuffleModal({ task, onClose, onShuffle, onOpen, onCycleStatus }) {
 
         {phase === 'shuffle' && (
           <Animated.View style={{ opacity: fade, alignItems: 'center', justifyContent: 'center' }}>
-            <View style={styles.deckWrap}>
-              <Animated.View style={[styles.ghostCard, { position: 'absolute' }, mkRotate(rot1)]} />
-              <Animated.View style={[styles.ghostCard, { position: 'absolute' }, mkRotate(rot2)]} />
-              <Animated.View style={[styles.ghostCard, mkRotate(rot3)]} />
+            <View style={[styles.deckWrap, { width: cw * 1.3, height: ch * 1.3 }]}>
+              <Animated.View style={[styles.ghostCard, { position: 'absolute', width: cw * 1.2, height: ch * 1.2 }, mkRotate(rot1)]} />
+              <Animated.View style={[styles.ghostCard, { position: 'absolute', width: cw * 1.2, height: ch * 1.2 }, mkRotate(rot2)]} />
+              <Animated.View style={[styles.ghostCard, { width: cw * 1.2, height: ch * 1.2 }, mkRotate(rot3)]} />
             </View>
             <Text style={styles.shuffleHint}>Shuffling…</Text>
           </Animated.View>
@@ -1694,7 +1695,7 @@ function ShuffleModal({ task, onClose, onShuffle, onOpen, onCycleStatus }) {
           <Animated.View style={{ alignItems: 'center', transform: [{ scale }] }}>
             {/* Interactive card */}
             <TouchableOpacity
-              style={[styles.revealCard, { backgroundColor: status.color, borderColor: status.color }]}
+              style={[styles.revealCard, { width: cw * 1.4, height: ch * 1.4, backgroundColor: status.color, borderColor: status.color }]}
               activeOpacity={0.85}
               onPress={() => onOpen(current)}
             >
@@ -1940,6 +1941,12 @@ function MorningStartModal({ onClaimReward, onStartPlanning, onClose }) {
 
 
 export default function TasksScreen() {
+  const { width: windowWidth } = useWindowDimensions();
+  const numColumns = Platform.OS === 'web' && windowWidth > 700 ? 5 : 2;
+  const cardW = (windowWidth - 14 * 2 - 12 * (numColumns - 1)) / numColumns;
+  const cardH = cardW * 1.4;
+  const cardW = (windowWidth - 14 * 2 - 12 * (numColumns - 1)) / numColumns;
+  const webCardBase = windowWidth;
   const isFocused = useIsFocused();
   const { colors } = useTheme();
   const { dayStartTime } = useSettings();
@@ -3610,7 +3617,7 @@ const styles = StyleSheet.create({
   cardRow:         { gap: 12, marginBottom: 12 },
   cardGrid:        { flexDirection: 'row', flexWrap: 'wrap', padding: 14, paddingBottom: 120, gap: 12 },
   cardBack:        { backgroundColor: '#ffffff', borderColor: '#e5e7eb', alignItems: 'center', justifyContent: 'center', backfaceVisibility: 'hidden' },
-  card:            { width: CARD_W, height: CARD_H, backgroundColor: '#fff', borderRadius: 14, borderWidth: 2, padding: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 10, elevation: 5, justifyContent: 'space-between', backfaceVisibility: 'hidden' },
+  card:            { backgroundColor: '#fff', borderRadius: 14, borderWidth: 2, padding: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 10, elevation: 5, justifyContent: 'space-between', backfaceVisibility: 'hidden' },
   cardCorner:      { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardCornerDot:   { width: 7, height: 7, borderRadius: 4 },
   cardCornerLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
@@ -3677,10 +3684,10 @@ const styles = StyleSheet.create({
 
   // Shuffle modal
   shuffleOverlay:  { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center' },
-  deckWrap:        { width: CARD_W * 1.3, height: CARD_H * 1.3, alignItems: 'center', justifyContent: 'center' },
-  ghostCard:       { width: CARD_W * 1.2, height: CARD_H * 1.2, borderRadius: 16, borderWidth: 2.5, borderColor: 'rgba(255,255,255,0.4)', backgroundColor: 'rgba(255,255,255,0.08)' },
+  deckWrap:        { alignItems: 'center', justifyContent: 'center' },
+  ghostCard:       { borderRadius: 16, borderWidth: 2.5, borderColor: 'rgba(255,255,255,0.4)', backgroundColor: 'rgba(255,255,255,0.08)' },
   shuffleHint:     { color: 'rgba(255,255,255,0.6)', fontSize: 15, marginTop: 24 },
-  revealCard:      { width: CARD_W * 1.4, height: CARD_H * 1.4, backgroundColor: '#fff', borderRadius: 18, borderWidth: 2.5, padding: 16, justifyContent: 'space-between' },
+  revealCard:      { backgroundColor: '#fff', borderRadius: 18, borderWidth: 2.5, padding: 16, justifyContent: 'space-between' },
   revealTitle:     { fontSize: 22, fontWeight: '700', color: '#111827', textAlign: 'center' },
   shuffleActions:  { flexDirection: 'row', gap: 12, marginTop: 24 },
   shuffleActionBtn:{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingVertical: 13, borderRadius: 12, backgroundColor: '#fff' },

@@ -11,7 +11,8 @@ import {
   Linking, 
   Switch,
   StyleSheet,
-  Dimensions
+  Dimensions,
+  useWindowDimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,9 +34,10 @@ import ViewNoteModal from './ViewNoteModal';
 import CalendarModal from '../../../components/CalendarModal';
 import TimePickerModal from '../../../components/TimePickerModal';
 
-const SCREEN_W = Dimensions.get('window').width;
+
 
 export default function TaskDetailModal({ task, onSave, onDelete, onClose, onViewNote, onStartFocus }) {
+  const { width: windowWidth } = useWindowDimensions();
   const { top, bottom } = useSafeAreaInsets();
   const { tasks: allTasks } = useTasks();
   const existingTags = Array.from(new Set(allTasks.flatMap(t => t.tags || []))).filter(Boolean).sort((a, b) => a.localeCompare(b));

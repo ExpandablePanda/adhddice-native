@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, Platform, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, Platform, Dimensions, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const SCREEN_W = Dimensions.get('window').width;
-const isWeb = Platform.OS === 'web';
-const CALENDAR_MAX = isWeb ? Math.min(SCREEN_W * 0.9, 400) : undefined;
+
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme';
 
 export default function CalendarModal({ visible, onClose, onSelect }) {
+  const { width: windowWidth } = useWindowDimensions();
+  const isWeb = Platform.OS === 'web';
+  const calendarMax = isWeb ? Math.min(windowWidth * 0.9, 400) : undefined;
   const [date, setDate] = useState(new Date());
 
   const year = date.getFullYear();
@@ -90,7 +91,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     width: '100%',
-    maxWidth: CALENDAR_MAX || '100%',
+    maxWidth: calendarMax || '100%',
     shadowColor: '#000',
     shadowOpacity: 0.15,
     shadowRadius: 15,
@@ -128,7 +129,7 @@ const styles = StyleSheet.create({
   },
   dayCell: {
     width: '14.28%',
-    height: isWeb ? 40 : 44,
+    height: Platform.OS === 'web' ? 40 : 44,
     justifyContent: 'center',
     alignItems: 'center',
   },

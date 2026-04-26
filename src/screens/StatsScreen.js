@@ -658,7 +658,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   hourCol: {
-    width: (SCREEN_W - 80) / 12,
     alignItems: 'center',
   },
   hourBox: {
@@ -685,7 +684,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   heatBox: {
-    width: (SCREEN_W - 80 - 24) / 10,
     aspectRatio: 1,
     borderRadius: 3,
   },
