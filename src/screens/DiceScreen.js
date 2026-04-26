@@ -784,6 +784,8 @@ export default function DiceScreen({ navigation, route }) {
   const rollPlayer = useAudioPlayer(require('../../assets/dice-roll.wav'));
   const alarmPlayer = useAudioPlayer(require('../../assets/calm-alarm.wav'));
   const broadcastRef = useRef(null);
+  const lastLocalChangeRef = useRef(0);
+  const isRemoteUpdateRef = useRef(false);
 
   useEffect(() => {
 
@@ -919,6 +921,33 @@ export default function DiceScreen({ navigation, route }) {
     loadDice();
   }, [storagePrefix, user]);
 
+  // Realtime subscription for cross-device dice sync
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`rt:user_dice:${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_dice', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          if (payload.new?.data) {
+            const remoteTime = new Date(payload.new.updated_at).getTime();
+            if (remoteTime > lastLocalChangeRef.current + 1000) {
+              isRemoteUpdateRef.current = true;
+              const cloud = payload.new.data;
+              if (cloud.pools) setPools(cloud.pools);
+              if (cloud.history) setHistory(cloud.history);
+              if (cloud.rewardPool) setRewardPool(cloud.rewardPool);
+              if (cloud.dailyBoard) setDailyBoard(cloud.dailyBoard);
+              if (cloud.multiplier !== undefined) setMultiplier(cloud.multiplier);
+              if (cloud.bank5IfOver17 !== undefined) setBank5IfOver17(cloud.bank5IfOver17);
+              if (cloud.tokensIfOver17 !== undefined) setTokensIfOver17(cloud.tokensIfOver17);
+            }
+          }
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user]);
+
   // AUTO-CLAIM LOGIC: Watch the break timer and claim the reward if it finishes
   const lastTimerState = useRef(null);
   // EFFECT: Handle smooth ticking and Alarm/Reward trigger
@@ -953,6 +982,12 @@ export default function DiceScreen({ navigation, route }) {
 
   useEffect(() => {
     if (!loaded || !dailyBoard) return;
+    if (isRemoteUpdateRef.current) {
+      isRemoteUpdateRef.current = false;
+      return;
+    }
+    lastLocalChangeRef.current = Date.now();
+
     const localKey = `${storagePrefix}dice_data`;
     const data = { pools, history, rewardPool, dailyBoard, multiplier, bank5IfOver17, tokensIfOver17 };
     AsyncStorage.setItem(localKey, JSON.stringify(data)).catch(e => console.error('Failed to save dice data', e));
